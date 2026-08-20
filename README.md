@@ -79,7 +79,7 @@ runtime CCDI/transparent-mode driver these profiles provision a radio for.
 
 ## Releasing
 
-A `v*` tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml): it gates on the test
+A `v*` tag runs [`.github/workflows/publish.yml`](.github/workflows/publish.yml): it gates on the test
 suite, pushes `M0LTE.Tait.Codeplug` to nuget.org via trusted publishing (OIDC, no stored API key), then
 cross-publishes the six CLI binaries and attaches them plus `SHA256SUMS` to a GitHub Release.
 

@@ -3,7 +3,7 @@ name: release
 # A `v*` tag ships both halves of this repo in one go:
 #   1. the library -> nuget.org as M0LTE.Tait.Codeplug, via trusted publishing (OIDC, no
 #      long-lived API key). The nuget.org policy must name owner M0LTE, repo tait-codeplug
-#      and workflow file `release.yml` - if you rename this file, update the policy.
+#      and workflow file `publish.yml` - if you rename this file, update the policy.
 #   2. the CLI -> self-contained, single-file executables for the common desktop/server
 #      arches, attached to a GitHub Release. Each asset embeds the .NET runtime and the
 #      native serial library, so it runs on a machine with no .NET installed.
