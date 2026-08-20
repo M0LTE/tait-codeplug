@@ -35,7 +35,7 @@ Or build it yourself: `dotnet run --project src/M0LTE.Tait.Codeplug.Cli -- <verb
 Run it with no arguments and you get a screen instead of a verb: pick a port, read the radio, edit the packet-relevant essentials, write it back.
 
 ```
-┌┤tait-codeplug - Tait TM8100/TM8200 codeplug editor├──────────────────────────────────────┐
+╭┤tait-codeplug 0.4.1 - Tait TM8100/TM8200 codeplug editor├────────────────────────────────╮
 │╭┤Radio├─────────────────────────────────────────────────────────────────────────────────╮│
 ││ Port:                           (no serial ports detected)                             ││
 ││                                                                                        ││
@@ -52,20 +52,22 @@ Run it with no arguments and you get a screen instead of a verb: pick a port, re
 ││                                                            ││ config.                  ││
 │╰────────────────────────────────────────────────────────────╯╰──────────────────────────╯│
 │╭┤Log├───────────────────────────────────────────────────────────────────────────────────╮│
-││ 21:08:51  loaded /home/tf/packet.net/tait-programming-research/tait-gps-customer-identi││
-││ 21:08:51  DBVer 0095, 1 channel(s) decoded.                                            ││
-││ 21:08:55  channel 0 edited (not yet written to the radio).                             ││
+││ 22:41:05  loaded /home/tf/packet.net/tait-programming-research/tait-gps-customer-identi││
+││ 22:41:05  DBVer 0095, 1 channel(s) decoded.                                            ││
+││ 22:41:11  channel 0 edited (not yet written to the radio).                             ││
 ││                                                                                        ││
 ││                                                                                        ││
 ││                                                                                        ││
 ││                                                                                        ││
 │ F10  Quit │ F3  Edit channel │ F5  Read │ F2  Write                                      │
-└──────────────────────────────────────────────────────────────────────────────────────────┘
+╰──────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
 `F5` reads the radio (power-cycle it when the log says so), `F3` edits the selected channel, `F2` writes back, `F10` quits. The PDN preset is staged and applied when you write, so choosing one changes nothing until you commit. A write always snapshots the pre-change codeplug to a `tait-codeplug-backup-<timestamp>.m8p` first.
 
 The radio work runs off the UI thread, so the screen stays live through the ~25s read and the 90s the connect will wait for your power-cycle.
+
+Colours are true-colour: a dark slate palette, green for read, amber for write (it is the one that changes your radio), red for errors. Terminal.Gui maps them down on a 16- or 256-colour terminal, so it stays legible on a plain console.
 
 To try the editor without a radio on the bench, open a saved codeplug: `tait-codeplug tui radio.m8p`.
 

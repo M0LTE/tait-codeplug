@@ -1,8 +1,10 @@
 using System.Collections.ObjectModel;
+using System.Reflection;
 using System.Globalization;
 using System.IO.Ports;
 using M0LTE.Tait.Codeplug;
 using Terminal.Gui.App;
+using Terminal.Gui.Drawing;
 using Terminal.Gui.Input;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
@@ -45,6 +47,7 @@ internal static class Tui
         try
         {
             _app.Init();
+            TuiTheme.Apply();
             _window = Build();
             if (initial is not null)
             {
@@ -57,6 +60,7 @@ internal static class Tui
                 Log("ready. pick a port, then Read from radio (power-cycle the radio when prompted).");
             }
 
+            RefreshChannels();
             SetBusy(false, StatusText());
             _app.Run(_window);
         }
@@ -70,7 +74,11 @@ internal static class Tui
 
     private static Window Build()
     {
-        var win = new Window { Title = "tait-codeplug - Tait TM8100/TM8200 codeplug editor" };
+        var win = new Window
+        {
+            Title = $"tait-codeplug {Version} - Tait TM8100/TM8200 codeplug editor",
+            BorderStyle = LineStyle.Rounded,
+        };
 
         // --- radio bar: port + the two hardware buttons ------------------------------------------
         var radio = new FrameView
@@ -104,6 +112,13 @@ internal static class Tui
 
         _statusLabel = new Label { X = 42, Y = 2, Text = "no codeplug loaded" };
 
+        TuiTheme.Panelise(radio);
+        TuiTheme.Body(portLabel);
+        TuiTheme.Input(_portField);
+        TuiTheme.Secondary(detected);
+        TuiTheme.Action(_readButton, TuiAccent.Read);
+        TuiTheme.Action(_writeButton, TuiAccent.Write);
+        TuiTheme.Status(_statusLabel, loaded: false);
         radio.Add(portLabel, _portField, detected, _readButton, _writeButton, _statusLabel);
 
         // --- channels (left) ----------------------------------------------------------------------
@@ -133,6 +148,9 @@ internal static class Tui
         _channelList.SetSource(ChannelRows);
         _channelList.Accepting += (_, e) => { e.Handled = true; EditSelectedChannel(); };
 
+        TuiTheme.Panelise(channels);
+        TuiTheme.Secondary(header);
+        TuiTheme.Body(_channelList);
         channels.Add(header, _channelList);
 
         // --- preset (right) -----------------------------------------------------------------------
@@ -164,6 +182,9 @@ internal static class Tui
                 + "extra: adds the\nTNC-less FFSK modem\nand SDM signalling.",
         };
 
+        TuiTheme.Panelise(preset);
+        TuiTheme.Body(_presetSelector);
+        TuiTheme.Secondary(presetHelp);
         preset.Add(_presetSelector, presetHelp);
 
         // --- log (bottom) -------------------------------------------------------------------------
@@ -178,6 +199,8 @@ internal static class Tui
 
         _logList = new ListView { X = 1, Y = 0, Width = Dim.Fill(), Height = Dim.Fill() };
         _logList.SetSource(LogLines);
+        TuiTheme.Panelise(log);
+        TuiTheme.Secondary(_logList);
         log.Add(_logList);
 
         var status = new StatusBar(
@@ -190,6 +213,23 @@ internal static class Tui
 
         win.Add(radio, channels, preset, log, status);
         return win;
+    }
+
+    /// <summary>The informational version, minus any build metadata, for the title bar.</summary>
+    private static string Version
+    {
+        get
+        {
+            string? v = typeof(Tui).Assembly
+                .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+            if (string.IsNullOrWhiteSpace(v))
+            {
+                return string.Empty;
+            }
+
+            int plus = v.IndexOf('+', StringComparison.Ordinal);
+            return plus < 0 ? v : v[..plus];
+        }
     }
 
     private static string FirstPortOrEmpty()
@@ -370,6 +410,9 @@ internal static class Tui
         ChannelRows.Clear();
         if (_fields is null)
         {
+            ChannelRows.Add(_image is null
+                ? "  no codeplug loaded - press F5 to read the radio"
+                : "  no field map for this database version - read-only");
             return;
         }
 
@@ -418,7 +461,7 @@ internal static class Tui
 
         CodeplugFields f = _fields;
 
-        var dialog = new Dialog { Title = $"Channel {index}", Width = 62, Height = 15 };
+        var dialog = new Dialog { Title = $"Channel {index}", Width = 62, Height = 15, BorderStyle = LineStyle.Rounded };
 
         var rxLabel = new Label { Text = "RX (MHz):", X = 1, Y = 1 };
         var rxField = new TextField { X = 14, Y = 1, Width = 16, Text = Mhz(f.GetRxFrequencyHz(index)) };
@@ -507,6 +550,7 @@ internal static class Tui
         _readButton.Enabled = !busy;
         _writeButton.Enabled = !busy;
         _statusLabel.Text = status;
+        TuiTheme.Status(_statusLabel, loaded: _image is not null);
     }
 
     private static void Log(string line)
