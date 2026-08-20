@@ -1,4 +1,4 @@
-name: release
+name: publish
 
 # A `v*` tag ships both halves of this repo in one go:
 #   1. the library -> nuget.org as M0LTE.Tait.Codeplug, via trusted publishing (OIDC, no
