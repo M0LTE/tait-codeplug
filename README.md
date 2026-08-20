@@ -30,7 +30,46 @@ Assets: `linux-x64`, `linux-arm64`, `linux-arm` (armv7 / 32-bit Pi), `win-x64`, 
 
 Or build it yourself: `dotnet run --project src/M0LTE.Tait.Codeplug.Cli -- <verb> ...` (.NET 10 SDK).
 
-## Use it
+## Interactive mode
+
+Run it with no arguments and you get a screen instead of a verb: pick a port, read the radio, edit the packet-relevant essentials, write it back.
+
+```
+┌┤tait-codeplug - Tait TM8100/TM8200 codeplug editor├──────────────────────────────────────┐
+│╭┤Radio├─────────────────────────────────────────────────────────────────────────────────╮│
+││ Port:                           (no serial ports detected)                             ││
+││                                                                                        ││
+││ ⟦ Read from radio ⟧▖ ⟦ Write to radio ⟧▖ DBVer 0095, 169 records                       ││
+│╰────────────────────────────────────────────────────────────────────────────────────────╯│
+│╭┤Channels - Enter or F3 to edit├────────────────────────────╮╭┤PDN preset├──────────────╮│
+││ #   RX (MHz)      TX (MHz)      Bandwidth  Power           ││ ◉ none                   ││
+││ 0   144.812500    (= RX)        Narrow     High            ││ ○ pdn-basic              ││
+││                                                            ││ ○ pdn-extra              ││
+││                                                            ││                          ││
+││                                                            ││ Applied when you         ││
+││                                                            ││ write. Neither preset    ││
+││                                                            ││ touches RF or channel    ││
+││                                                            ││ config.                  ││
+│╰────────────────────────────────────────────────────────────╯╰──────────────────────────╯│
+│╭┤Log├───────────────────────────────────────────────────────────────────────────────────╮│
+││ 21:08:51  loaded /home/tf/packet.net/tait-programming-research/tait-gps-customer-identi││
+││ 21:08:51  DBVer 0095, 1 channel(s) decoded.                                            ││
+││ 21:08:55  channel 0 edited (not yet written to the radio).                             ││
+││                                                                                        ││
+││                                                                                        ││
+││                                                                                        ││
+││                                                                                        ││
+│ F10  Quit │ F3  Edit channel │ F5  Read │ F2  Write                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+`F5` reads the radio (power-cycle it when the log says so), `F3` edits the selected channel, `F2` writes back, `F10` quits. The PDN preset is staged and applied when you write, so choosing one changes nothing until you commit. A write always snapshots the pre-change codeplug to a `tait-codeplug-backup-<timestamp>.m8p` first.
+
+The radio work runs off the UI thread, so the screen stays live through the ~25s read and the 90s the connect will wait for your power-cycle.
+
+To try the editor without a radio on the bench, open a saved codeplug: `tait-codeplug tui radio.m8p`.
+
+## Use it from the command line
 
 ```
 # decode - the source is an .m8p file OR a serial port (reads the live radio)
@@ -45,6 +84,7 @@ tait-codeplug version <port>                       interrogate: model / firmware
 tait-codeplug read    <port> [out.m8p]             read the codeplug (to a file, or stdout if omitted)
 tait-codeplug patch   <port> <field> <value>       live-set one field (backs up first)
 tait-codeplug patch   <port> profile <name>        live-apply a PDN upgrade profile
+tait-codeplug tui     [file.m8p]                  interactive mode, optionally on a saved codeplug
 ```
 
 The radio must be latched into programming mode: power-cycle it as the command connects. Progress and

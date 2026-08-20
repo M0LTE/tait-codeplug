@@ -9,6 +9,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Terminal.Gui" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\M0LTE.Tait.Codeplug\M0LTE.Tait.Codeplug.csproj" />
   </ItemGroup>
 

@@ -20,11 +20,19 @@
 // github.com/packet-net/packet.net/blob/main/docs/research/tait-codeplug-programming-brief.md.
 
 using M0LTE.Tait.Codeplug;
+using M0LTE.Tait.Codeplug.Cli;
 
+// No arguments: go interactive. Unless this isn't a terminal (a script running the tool with
+// its output piped), where drawing a UI would be nonsense - print the usage instead.
 if (args.Length == 0)
 {
-    PrintUsage();
-    return 1;
+    if (Console.IsInputRedirected || Console.IsOutputRedirected)
+    {
+        PrintUsage();
+        return 1;
+    }
+
+    return Tui.Run();
 }
 
 try
@@ -45,6 +53,13 @@ try
             return CmdVersion(Arg(args, 1));
         case "read":
             return CmdRead(Arg(args, 1), args.Length > 2 ? args[2] : null);
+        case "tui":
+            return CmdTui(args.Length > 1 ? args[1] : null);
+        case "help":
+        case "--help":
+        case "-h":
+            PrintUsage();
+            return 0;
         default:
             PrintUsage();
             return 1;
@@ -54,6 +69,19 @@ catch (Exception ex) when (ex is FormatException or IOException or TimeoutExcept
 {
     Console.Error.WriteLine($"error: {ex.Message}");
     return 2;
+}
+
+// tui [file.m8p] - the interactive editor, optionally opened on a saved codeplug rather than
+// starting empty and reading the radio. Same screen either way.
+static int CmdTui(string? path)
+{
+    if (path is null)
+    {
+        return Tui.Run();
+    }
+
+    CodeplugImage image = CodeplugImage.LoadM8p(File.ReadAllText(path));
+    return Tui.Run(image, path);
 }
 
 static int CmdParse(string source)
@@ -262,6 +290,8 @@ static string Arg(string[] args, int index)
 static void PrintUsage()
 {
     Console.WriteLine("usage:");
+    Console.WriteLine("  (no arguments)                         interactive mode: pick a port, read, edit, write");
+    Console.WriteLine("  tui     [file.m8p]                     interactive mode, optionally opened on a saved codeplug");
     Console.WriteLine("  parse   <file.m8p | port>              verify checksums + section map (file or live radio)");
     Console.WriteLine("  dump    <file.m8p | port>              decode every mapped field (file or live radio)");
     Console.WriteLine("  get     <file.m8p | port> [field]      read one field, or all as name=value (file or live radio)");
