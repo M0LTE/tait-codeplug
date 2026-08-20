@@ -1,0 +1,33 @@
+name: ci
+
+# Build + test on every push and PR. GitHub-hosted runners: this is a public repo, so
+# standard-runner minutes are free, and the job needs nothing but a .NET SDK.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: build
+        run: dotnet build -c Release
+
+      - name: test
+        run: dotnet test -c Release --no-build

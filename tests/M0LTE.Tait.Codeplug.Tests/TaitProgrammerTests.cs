@@ -1,8 +1,8 @@
 using AwesomeAssertions;
-using Packet.Tait.Codeplug;
+using M0LTE.Tait.Codeplug;
 using Xunit;
 
-namespace Packet.Tait.Codeplug.Tests;
+namespace M0LTE.Tait.Codeplug.Tests;
 
 /// <summary>
 /// Drives <see cref="TaitProgrammer"/> against a mock radio scripted from the real captured

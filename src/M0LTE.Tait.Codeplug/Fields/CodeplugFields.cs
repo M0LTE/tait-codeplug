@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace Packet.Tait.Codeplug;
+namespace M0LTE.Tait.Codeplug;
 
 /// <summary>
 /// A typed, version-pinned view over a <see cref="CodeplugImage"/>: the codeplug fields whose

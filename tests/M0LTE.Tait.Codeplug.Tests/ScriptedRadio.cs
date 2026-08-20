@@ -1,7 +1,7 @@
 using System.Text;
-using Packet.Tait.Codeplug;
+using M0LTE.Tait.Codeplug;
 
-namespace Packet.Tait.Codeplug.Tests;
+namespace M0LTE.Tait.Codeplug.Tests;
 
 /// <summary>
 /// A mock Tait radio over the <see cref="ISerialLine"/> seam: it recognises a written command

@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/M0LTE.Tait.Codeplug/M0LTE.Tait.Codeplug.csproj" />
+    <Project Path="src/M0LTE.Tait.Codeplug.Cli/M0LTE.Tait.Codeplug.Cli.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/M0LTE.Tait.Codeplug.Tests/M0LTE.Tait.Codeplug.Tests.csproj" />
+  </Folder>
+</Solution>

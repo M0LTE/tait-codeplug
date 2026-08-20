@@ -1,16 +1,15 @@
-# Packet.Tait.Codeplug
+# M0LTE.Tait.Codeplug
 
-A Tait TM8100/TM8200 codeplug library (and a thin CLI front-end, `Packet.Tait.Codeplug.Cli`),
-reverse-engineered from Free Serial Analyzer captures of the Windows CPS. It reads and writes the
-codeplug over the serial programming interface without the CPS, exposes a typed, version-pinned field
-map for the whole CPS Data form and the channel table, and applies the Packet.NET (PDN) upgrade
-profiles. The protocol was milestone **M1** of
-[`docs/research/tait-codeplug-programming-brief.md`](../../docs/research/tait-codeplug-programming-brief.md);
-the read + write path is hardware-validated (see `docs/research/tait-codeplug-protocol.md`). The
-library is the piece the node can later consume to program an attached radio.
+A Tait TM8100/TM8200 codeplug library, reverse-engineered from Free Serial Analyzer captures of the
+Windows CPS. It reads and writes the codeplug over the serial programming interface without the CPS,
+exposes a typed, version-pinned field map for the whole CPS Data form and the channel table, and
+applies the Packet.NET (PDN) upgrade profiles. The read + write path is hardware-validated against a
+real TM8100.
 
-The full protocol write-up is in `tait-programming-research/FINDINGS.md` (outside the repo, with
-the captures). Short version:
+The CLI front-end that ships from the same repo, `tait-codeplug`, is a thin layer over this library:
+see [github.com/M0LTE/tait-codeplug](https://github.com/M0LTE/tait-codeplug) for prebuilt binaries.
+
+## The protocol, in short
 
 - ASCII-hex, line-oriented, CR-terminated, strictly lock-step (every command gets one `>` prompt
   before the next).
@@ -21,6 +20,10 @@ the captures). Short version:
   Read a section: `r<section>`. Write: `b`, `i<arg>`, a run of `w<record>`, `e`. Teardown: `^`.
 - Baud opens at 9600, switches to 19200 for the transfer.
 
+The full write-up is in [`docs/research/tait-codeplug-protocol.md`](https://github.com/packet-net/packet.net/blob/main/docs/research/tait-codeplug-protocol.md)
+and the programming brief it came from is [`docs/research/tait-codeplug-programming-brief.md`](https://github.com/packet-net/packet.net/blob/main/docs/research/tait-codeplug-programming-brief.md),
+both in the packet.net repo where this code started life.
+
 ## What is here
 
 - `CodeplugChecksum` / `CodeplugRecord` / `CodeplugImage` - the record model, checksum, and .m8p
@@ -29,31 +32,26 @@ the captures). Short version:
   `ChannelBits`): channels (frequency, bandwidth, power, split-TX, CTCSS/DCS), the whole CPS **Data**
   form (its General, Serial Communications, RF Modems, SDM and TOTAL Transparent Mode tabs live in the
   one data/signalling record; the GPS and Customer Data tabs are separate records; plus the unit data
-  identity), and audio taps. See `docs/research/tait-codeplug-protocol.md` for the map. Each field is
-  pinned by a test.
+  identity), and audio taps. Each field is pinned by a test.
 - `FieldConsole` - name/value access used by the `dump`/`get`/`set` CLI verbs.
 - `CodeplugFields.ApplyPdnBasic()` / `ApplyPdnExtra()` - the two PDN upgrade profiles (see below).
 - `ISerialLine` / `SerialPortLine` - the byte seam (mirrors `Packet.Radio.Tait.ISerialIo`); tests
   substitute a scripted mock radio.
 - `TaitProgrammer` - the lock-step transport state machine (connect, interrogate, read, write).
 
-The CLI (`tools/Packet.Tait.Codeplug.Cli`) is a thin front-end over this library.
+## Using it
 
-## CLI
+```csharp
+using M0LTE.Tait.Codeplug;
 
-```
-# decode - the source is an .m8p file OR a serial port (read the live radio; power-cycle as prompted)
-dotnet run --project tools/Packet.Tait.Codeplug.Cli -- parse <file.m8p | port>       # verify checksums + section map
-dotnet run --project tools/Packet.Tait.Codeplug.Cli -- dump  <file.m8p | port>       # decode every mapped field
-dotnet run --project tools/Packet.Tait.Codeplug.Cli -- get   <file.m8p | port> [field]  # read one field (or all)
-dotnet run --project tools/Packet.Tait.Codeplug.Cli -- set   <file.m8p> <field> <v>  # set one field + save
-dotnet run --project tools/Packet.Tait.Codeplug.Cli -- set   <file.m8p> profile <name>  # apply a PDN profile
+// Offline: load a CPS .m8p save and read a field.
+CodeplugImage image = CodeplugImage.LoadM8p(File.ReadAllText("radio.m8p"));
+CodeplugFields fields = CodeplugFields.Open(image);
+Console.WriteLine(FieldConsole.Get(fields, "ch0.bandwidth"));
 
-# hardware (radio latched into programming mode on <port>: power-cycle as you trigger)
-dotnet run --project tools/Packet.Tait.Codeplug.Cli -- version <port>
-dotnet run --project tools/Packet.Tait.Codeplug.Cli -- read    <port> [out.m8p]           # to a file, or stdout if omitted
-dotnet run --project tools/Packet.Tait.Codeplug.Cli -- patch   <port> <field> <value>   # live-set one field (backs up first)
-dotnet run --project tools/Packet.Tait.Codeplug.Cli -- patch   <port> profile <name>    # live-apply a PDN profile
+// Live: read the codeplug off a radio latched into programming mode (power-cycle it as you connect).
+using var programmer = new TaitProgrammer(new SerialPortLine("/dev/ttyUSB0"));
+CodeplugImage live = programmer.ReadImage();
 ```
 
 ## PDN upgrade profiles
@@ -74,35 +72,23 @@ prefer a clean flash of a full codeplug first, then apply a profile.
   data path, the transparent terminal baud (28800) and over-air FFSK baud (2400), and SDM + CCDI SDM
   output. The over-air baud must match at both ends; adjust the bauds and the data port for your setup.
 
-`patch` reads the codeplug, sets the field, backs up the pre-change image to a file, and writes the
-whole codeplug (a single-record write is not committed by the radio - #744). It is hardware-validated.
-There is no raw whole-file write verb: the underlying write method refuses a radio whose database
-version is not in its validated set (the write init argument and field offsets are version-specific).
-Reading is unrestricted.
-
-## Releases
-
-Tagging `tait-cli-v<version>` (e.g. `tait-cli-v0.1.0`) runs `.github/workflows/publish-tait-cli.yml`,
-which cross-publishes self-contained, single-file executables for `linux-x64`, `linux-arm64`,
-`linux-arm` (armv7), `win-x64`, `osx-x64` and `osx-arm64`, and attaches them (plus `SHA256SUMS`) to a
-GitHub Release. Each binary embeds the .NET runtime and the native serial library, so it runs with no
-.NET install: download the one for your platform, `chmod +x`, run. The release notes live in
-`.github/release-notes/tait-cli.md`. The workflow gates on the test suite first, so a build that fails
-its tests never reaches a release.
-
 ## Status and safety
 
 The read + write path is hardware-validated against a real TM8100 (a same-image write round-tripped
 every writable record byte-identical), and the field map is validated field-by-field against
 real-radio CPS saves. Field writes are byte-identical to the CPS's own saves. Safety rails:
 
-1. `patch` auto-snapshots the current codeplug to a backup file before writing; keep it.
+1. Snapshot the current codeplug before writing (the CLI's `patch` verb does this automatically).
 2. Codeplug region only - this never writes firmware.
 3. Version-pin: the write path refuses a radio whose database version is not in its validated set
    (currently 0094 / 0095); the field offsets are version-specific.
 4. The field map enforces the CPS's own input rules (value ranges, character sets, and the "only
-   available if ..." availability dependencies), so the tool will not write a state the CPS rejects.
+   available if ..." availability dependencies), so the library will not write a state the CPS rejects.
 5. Bench on a sacrificial radio first, and re-read (after a power-cycle) to verify a write.
 
-Open unknowns (non-blocking): the `i53380146` init argument (a DBVer constant, #744) and the section
-0x27 database-version record (#745).
+A single-record write is acked but not committed by the radio, so a live field change writes the whole
+codeplug; that is the validated write path.
+
+## Licence
+
+AGPL-3.0-or-later. See [LICENSE](https://github.com/M0LTE/tait-codeplug/blob/main/LICENSE).

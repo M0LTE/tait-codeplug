@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace Packet.Tait.Codeplug;
+namespace M0LTE.Tait.Codeplug;
 
 /// <summary>
 /// The radio identity the interrogate pulls from section 0. Each record's data bytes are

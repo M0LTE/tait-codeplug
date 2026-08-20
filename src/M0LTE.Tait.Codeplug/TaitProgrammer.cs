@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace Packet.Tait.Codeplug;
+namespace M0LTE.Tait.Codeplug;
 
 /// <summary>Tunables for the programming session.</summary>
 public sealed class ProgrammerOptions

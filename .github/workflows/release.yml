@@ -1,0 +1,144 @@
+name: release
+
+# A `v*` tag ships both halves of this repo in one go:
+#   1. the library -> nuget.org as M0LTE.Tait.Codeplug, via trusted publishing (OIDC, no
+#      long-lived API key). The nuget.org policy must name owner M0LTE, repo tait-codeplug
+#      and workflow file `release.yml` - if you rename this file, update the policy.
+#   2. the CLI -> self-contained, single-file executables for the common desktop/server
+#      arches, attached to a GitHub Release. Each asset embeds the .NET runtime and the
+#      native serial library, so it runs on a machine with no .NET installed.
+#
+# Single-file gotcha handled: System.IO.Ports ships a native library that a naive single-file
+# publish drops. `IncludeNativeLibrariesForSelfExtract=true` bundles it (extracted to a temp
+# dir on first run); `EnableCompressionInSingleFile=true` keeps the download to ~37 MB instead
+# of ~70 MB. No trimming - System.IO.Ports is not trim-safe, and a broken cross-arch binary
+# can't be caught here.
+#
+# NuGet's OIDC-issued API key is valid for one hour, so the push happens before the slow
+# six-arch cross-publish, not after it.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version without the v prefix, e.g. 0.3.0'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # gh release create
+      id-token: write   # OIDC token for nuget.org trusted publishing
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - id: v
+        name: Resolve version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Gate - build + test
+        # A build that fails its own tests must never reach nuget.org or the Release.
+        run: |
+          dotnet build -c Release
+          dotnet test -c Release --no-build
+
+      - name: Pack the library
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          dotnet pack src/M0LTE.Tait.Codeplug/M0LTE.Tait.Codeplug.csproj \
+            -c Release --output ./artifacts -p:Version="${VERSION}"
+          ls -l ./artifacts/
+
+      - name: NuGet login (OIDC -> short-lived API key)
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: tomf84
+
+      - name: Push to nuget.org
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+          API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+        run: |
+          set -euo pipefail
+          dotnet nuget push "./artifacts/M0LTE.Tait.Codeplug.${VERSION}.nupkg" \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key "${API_KEY}" \
+            --skip-duplicate
+          if [ -f "./artifacts/M0LTE.Tait.Codeplug.${VERSION}.snupkg" ]; then
+            dotnet nuget push "./artifacts/M0LTE.Tait.Codeplug.${VERSION}.snupkg" \
+              --source https://api.nuget.org/v3/index.json \
+              --api-key "${API_KEY}" \
+              --skip-duplicate || \
+              echo "::warning::snupkg push failed; the main nupkg still uploaded."
+          fi
+
+      - name: Build self-contained single-file CLI binaries (all arches)
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          set -euo pipefail
+          proj=src/M0LTE.Tait.Codeplug.Cli/M0LTE.Tait.Codeplug.Cli.csproj
+          rm -rf release && mkdir -p release
+          for rid in linux-x64 linux-arm64 linux-arm win-x64 osx-x64 osx-arm64; do
+            echo "==> publishing $rid"
+            out="publish/$rid"
+            rm -rf "$out"
+            dotnet publish "$proj" -c Release -r "$rid" --self-contained true \
+              -p:Version="${VERSION}" \
+              -p:PublishSingleFile=true \
+              -p:IncludeNativeLibrariesForSelfExtract=true \
+              -p:EnableCompressionInSingleFile=true \
+              -p:DebugType=none -p:GenerateDocumentationFile=false \
+              -o "$out"
+            # The AssemblyName is tait-codeplug (+ .exe on Windows). Stage a version-stamped,
+            # arch-named copy as the release asset.
+            if [ "$rid" = "win-x64" ]; then
+              cp "$out/tait-codeplug.exe" "release/tait-codeplug-${VERSION}-${rid}.exe"
+            else
+              cp "$out/tait-codeplug" "release/tait-codeplug-${VERSION}-${rid}"
+            fi
+          done
+          file release/*
+          ls -l release/
+
+      - name: Checksums + create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.v.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          cd release
+          sha256sum tait-codeplug-* > SHA256SUMS
+          cat SHA256SUMS
+          cd ..
+          sed "s/__VER__/${VERSION}/g; s#__REPO__#${REPO}#g" .github/release-notes.md > release/NOTES.md
+          gh release create "v${VERSION}" \
+            release/tait-codeplug-"${VERSION}"-linux-x64 \
+            release/tait-codeplug-"${VERSION}"-linux-arm64 \
+            release/tait-codeplug-"${VERSION}"-linux-arm \
+            release/tait-codeplug-"${VERSION}"-win-x64.exe \
+            release/tait-codeplug-"${VERSION}"-osx-x64 \
+            release/tait-codeplug-"${VERSION}"-osx-arm64 \
+            release/SHA256SUMS \
+            --repo "${REPO}" \
+            --title "tait-codeplug ${VERSION}" \
+            --notes-file release/NOTES.md

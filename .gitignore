@@ -1,0 +1,32 @@
+# Build artifacts
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Pp]ublish/
+artifacts/
+release/
+*.user
+*.suo
+.vs/
+.vscode/launch.json
+
+# Test results & coverage
+TestResults/
+coverage/
+*.trx
+
+# Tooling caches
+.idea/
+*.swp
+.DS_Store
+.claude/
+
+# Per-developer launch configuration (port choices, env vars)
+**/Properties/launchSettings.json
+
+# Tait codeplug reverse-engineering captures: large binary serial logs plus a real radio's
+# saved configuration. Kept out of git; the protocol write-up is linked from the README.
+tait-programming-research/
+
+# Backups the CLI writes before a live patch
+*.pre-patch-backup-*.m8p

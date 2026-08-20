@@ -1,4 +1,4 @@
-namespace Packet.Tait.Codeplug;
+namespace M0LTE.Tait.Codeplug;
 
 /// <summary>
 /// The Tait codeplug record checksum. Same family as CCDI (modulo-256 sum, two's-complemented),

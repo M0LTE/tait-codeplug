@@ -1,7 +1,7 @@
 // Tait TM8100/TM8200 codeplug programmer - spike-grade Linux CLI.
 //
-// Reverse-engineered from Free Serial Analyzer captures of the Windows CPS (see
-// tait-programming-research/FINDINGS.md). The programming protocol is ASCII-hex, line-oriented,
+// Reverse-engineered from Free Serial Analyzer captures of the Windows CPS (the write-up lives
+// with the captures, outside this repo). The programming protocol is ASCII-hex, line-oriented,
 // CR-terminated, strictly lock-step; records share the .m8p framing. The radio must be latched
 // into programming mode first: power-cycle it as the operation is triggered. No RF is involved.
 //
@@ -14,11 +14,12 @@
 //   version <port>                            interrogate: model / firmware / serial
 //   read    <port> [out.m8p]                  read the raw codeplug (to a file, or stdout if omitted)
 //
-// GOLDEN RULES (docs/research/tait-codeplug-programming-brief.md): always back up before a write
-// (patch does this), never touch firmware (this only writes the codeplug region), version-pin on
-// DBVer (the write path refuses an unvalidated database version), and bench on a sacrificial radio first.
+// GOLDEN RULES: always back up before a write (patch does this), never touch firmware (this only
+// writes the codeplug region), version-pin on DBVer (the write path refuses an unvalidated database
+// version), and bench on a sacrificial radio first. The programming brief they come from is at
+// github.com/packet-net/packet.net/blob/main/docs/research/tait-codeplug-programming-brief.md.
 
-using Packet.Tait.Codeplug;
+using M0LTE.Tait.Codeplug;
 
 if (args.Length == 0)
 {

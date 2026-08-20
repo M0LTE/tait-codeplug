@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace Packet.Tait.Codeplug;
+namespace M0LTE.Tait.Codeplug;
 
 /// <summary>Maps the typed <see cref="CodeplugFields"/> to and from flat <c>name=value</c> text, so
 /// the CLI can dump every field and get/set one by name. Channel fields are named

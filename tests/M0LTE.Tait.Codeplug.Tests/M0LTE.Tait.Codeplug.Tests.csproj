@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\M0LTE.Tait.Codeplug\M0LTE.Tait.Codeplug.csproj" />
+  </ItemGroup>
+
+</Project>

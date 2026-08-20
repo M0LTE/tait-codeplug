@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace Packet.Tait.Codeplug;
+namespace M0LTE.Tait.Codeplug;
 
 /// <summary>
 /// A whole codeplug: the CPS .m8p header key/values plus the ordered records. The .m8p layout is

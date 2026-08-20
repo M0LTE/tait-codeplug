@@ -1,4 +1,4 @@
-namespace Packet.Tait.Codeplug;
+namespace M0LTE.Tait.Codeplug;
 
 /// <summary>Per-channel bandwidth. Stored as a 2-bit index in the channel bit-stream.</summary>
 public enum Bandwidth : byte

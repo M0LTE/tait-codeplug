@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>M0LTE.Tait.Codeplug.Cli</RootNamespace>
+    <!-- The shipped command is `tait-codeplug`, whatever the project is called. -->
+    <AssemblyName>tait-codeplug</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\M0LTE.Tait.Codeplug\M0LTE.Tait.Codeplug.csproj" />
+  </ItemGroup>
+
+</Project>

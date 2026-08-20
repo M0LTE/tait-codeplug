@@ -1,6 +1,6 @@
 using System.IO.Ports;
 
-namespace Packet.Tait.Codeplug;
+namespace M0LTE.Tait.Codeplug;
 
 /// <summary>
 /// The narrow byte-level seam the programmer drives the wire over. Same shape as

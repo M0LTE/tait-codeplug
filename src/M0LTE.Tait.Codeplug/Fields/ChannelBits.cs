@@ -1,4 +1,4 @@
-namespace Packet.Tait.Codeplug;
+namespace M0LTE.Tait.Codeplug;
 
 /// <summary>
 /// The channel table (record type 0x05) is one contiguous LSB-first bit-stream, a fixed number of

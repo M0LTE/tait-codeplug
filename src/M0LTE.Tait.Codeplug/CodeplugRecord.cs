@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace Packet.Tait.Codeplug;
+namespace M0LTE.Tait.Codeplug;
 
 /// <summary>
 /// One codeplug record. On the wire and in the .m8p a record is the ASCII-hex string
