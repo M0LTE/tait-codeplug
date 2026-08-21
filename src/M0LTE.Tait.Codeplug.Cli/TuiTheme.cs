@@ -184,6 +184,18 @@ internal static class TuiTheme
         Disabled = new Attribute(Dim, Panel),
     });
 
+    /// <summary>The one line in a prompt that the operator has to act on: amber and bold, because it
+    /// is an instruction to go and do something to the hardware, not a status.</summary>
+    internal static void Alert(View view) => view.SetScheme(new Scheme
+    {
+        Normal = new Attribute(Amber, Panel, TextStyle.Bold),
+        HotNormal = new Attribute(Amber, Panel, TextStyle.Bold),
+        Focus = new Attribute(White, SelectionBg, TextStyle.Bold),
+        HotFocus = new Attribute(White, SelectionBg, TextStyle.Bold),
+        Highlight = new Attribute(White, SelectionBg),
+        Disabled = new Attribute(Dim, Panel),
+    });
+
     /// <summary>Status text, tinted by what it is saying.</summary>
     internal static void Status(View label, bool loaded) => label.SetScheme(new Scheme
     {

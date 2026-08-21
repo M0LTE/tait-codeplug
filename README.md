@@ -63,11 +63,23 @@ Run it with no arguments and you get a screen instead of a verb: pick a port, re
 ╰──────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
-`F6` moves between panels and `Tab` moves within one; the panel holding the keyboard lights its border. `F5` reads the radio (power-cycle it when the log says so), `F3` edits the selected channel, `F7` adds one, `F8` deletes one, `F2` writes back, `F10` quits. The PDN preset is staged and applied when you write, so choosing one changes nothing until you commit. A write always snapshots the pre-change codeplug to a `tait-codeplug-backup-<timestamp>.m8p` first.
+`F6` moves between panels and `Tab` moves within one; the panel holding the keyboard lights its border. `F5` reads the radio (it prompts you to power-cycle it), `F3` edits the selected channel, `F7` adds one, `F8` deletes one, `F2` writes back, `F10` quits. The PDN preset is staged and applied when you write, so choosing one changes nothing until you commit. A write always snapshots the pre-change codeplug to a `tait-codeplug-backup-<timestamp>.m8p` first.
 
 The radio work runs off the UI thread, so the screen stays live through the ~25s read and the 90s the connect will wait for your power-cycle.
 
 Left alone, it goes quiet: the main loop steps down after ten seconds untouched and again after a minute, so an editor left open over SSH is not writing to your terminal 25 times a second all afternoon. Typing is unaffected; the one key that wakes it after a long pause can take up to a quarter of a second to register, and everything after it is normal.
+
+`F5` and `F2` put "power-cycle the radio now" on the screen rather than in the log, and take it down again by themselves once the radio answers. Cancel or Esc abandons the operation instead of waiting out the full 90 seconds. Both show a progress bar while they run.
+
+### Typing feels slow over SSH
+
+It is, and it is worth knowing why before you go looking for a fault at your end. Terminal.Gui repaints the whole screen for every character typed into a text box - about 7-8 bytes per cell on screen, so 22 KB on a 100x30 terminal and 82 KB at 200x50, per keystroke. A minimal Terminal.Gui app does the same, so it is the library rather than this tool, and there is nothing to configure around it.
+
+Locally you will not notice. Across an SSH link to a maximised terminal it is a second or two per character. What helps:
+
+- Make the terminal window smaller while you are editing: 80x24 costs a sixth of what 200x50 does.
+- Skip the editor for a single value: `tait-codeplug patch /dev/ttyUSB0 ch0.rxfreq 144.812500` does a read-modify-write with no typing in a UI at all.
+- Run the tool on the machine the radio is plugged into, rather than across the link.
 
 Colours are true-colour: a dark slate palette, green for read, amber for write (it is the one that changes your radio), red for errors. Terminal.Gui maps them down on a 16- or 256-colour terminal, so it stays legible on a plain console.
 

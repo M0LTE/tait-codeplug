@@ -4,6 +4,25 @@ What changed in each release. The section for a version is lifted into that vers
 
 Newest first. Add a section before tagging.
 
+## 0.7.0 - 2026-08-21
+
+- **"Power-cycle the radio now" is a prompt, not a line in the log.** A read or a write puts it on the screen where it cannot be missed, and it takes itself back down the moment the radio answers - the normal case needs no keystroke at all. Cancel, or Esc, abandons the operation, which is the way out when the radio is not going to answer rather than sitting through the full 90-second wait.
+- **Read and write show progress.** A bar and a percentage on the radio bar, from the library rather than guessed at: sections for a read, records for a write (`writing 52% (88/168)`).
+- Cancelling a write is only offered up to the point where the write block opens. Past that the codeplug is being modified, and stopping half way would leave it open and partly applied, so a started write always runs to its commit.
+- **The port box accepts typing again.** It is a dropdown of detected ports, and it shipped read-only, so on a machine where the radio's port does not enumerate - which a plain USB-serial cable often does not - there was no way to name one and the interactive mode could not be used at all.
+- Progress redraws are throttled to a few a second. See below for why that matters more than it sounds.
+
+**On typing being slow over SSH**, which is what prompted this release: it is real, it is measurable, and it is not something this tool can fix. Terminal.Gui repaints the entire screen for every character typed into a text box. Measured against a minimal Terminal.Gui app - one window, one text field, nothing else - so it is not something about this UI:
+
+| terminal | per typed character |
+|---|---|
+| 80x24 | 13 KB |
+| 100x30 | 22 KB |
+| 120x40 | 37 KB |
+| 200x50 | 82 KB |
+
+That is ~7-8 bytes per cell on screen, every keystroke, and 2.4.18-develop.31 behaves identically. Locally it is invisible. On a maximised terminal over SSH it is the second or two per character that typing a frequency actually felt like. Until it is fixed upstream, three things help: a smaller terminal window while editing (80x24 is six times cheaper than 200x50), `patch <port> ch0.rxfreq 144.812500` from the command line instead of the editor, or running the tool on the machine the radio is plugged into rather than across a link.
+
 ## 0.6.1 - 2026-08-21
 
 - **The interactive mode stops talking to the terminal when nobody is using it.** Terminal.Gui runs its main loop 25 times a second whether or not anything has changed, and rewrites cursor state every time round: sitting there with nothing happening, the tool was emitting ~315 bytes a second in 25 separate writes, for as long as it was open. The loop now steps down after ten seconds untouched and again after a minute. Measured idle output falls from 315 bytes/sec to 128 after a short pause and to 54 after a long one.
