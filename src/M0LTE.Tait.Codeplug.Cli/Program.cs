@@ -60,7 +60,7 @@ try
         case "--upgrade":
             return SelfUpgrade.RunAsync().GetAwaiter().GetResult();
         case "tui":
-            return CmdTui(args.Length > 1 ? args[1] : null);
+            return CmdTui(args);
         case "help":
         case "--help":
         case "-h":
@@ -106,17 +106,54 @@ static int CmdChannel(string[] args)
     }
 }
 
-// tui [file.m8p] - the interactive editor, optionally opened on a saved codeplug rather than
-// starting empty and reading the radio. Same screen either way.
-static int CmdTui(string? path)
+// tui [--driver <name>] [file.m8p] - the interactive editor, optionally opened on a saved codeplug
+// rather than starting empty and reading the radio. Same screen either way.
+static int CmdTui(string[] args)
 {
+    string? driver = null;
+    string? path = null;
+    bool bench = false;
+
+    for (int i = 1; i < args.Length; i++)
+    {
+        if (args[i] == "--bench")
+        {
+            bench = true;
+            continue;
+        }
+
+        if (args[i] == "--driver")
+        {
+            driver = i + 1 < args.Length
+                ? args[i + 1]
+                : throw new FormatException("--driver needs a name, or 'list' to see what is available");
+            i++;
+            continue;
+        }
+
+        path ??= args[i];
+    }
+
+    if (string.Equals(driver, "list", StringComparison.OrdinalIgnoreCase))
+    {
+        TuiDriverChoice.PrintAvailable(Console.Out);
+        return 0;
+    }
+
+    string? resolved = TuiDriverChoice.Resolve(driver);
+
+    if (bench)
+    {
+        return TuiBench.Run(resolved, Console.Out);
+    }
+
     if (path is null)
     {
-        return Tui.Run();
+        return Tui.Run(driver: resolved);
     }
 
     CodeplugImage image = CodeplugImage.LoadM8p(File.ReadAllText(path));
-    return Tui.Run(image, path);
+    return Tui.Run(image, path, resolved);
 }
 
 static int CmdParse(string source)
@@ -327,6 +364,8 @@ static void PrintUsage()
     Console.WriteLine("usage:");
     Console.WriteLine("  (no arguments)                         interactive mode: pick a port, read, edit, write");
     Console.WriteLine("  tui     [file.m8p]                     interactive mode, optionally opened on a saved codeplug");
+    Console.WriteLine("  tui --driver <name|list> [file.m8p]    force a console driver (try this if typing is slow)");
+    Console.WriteLine("  tui --bench [--driver <name>]          time what one screen repaint costs on this console");
     Console.WriteLine("  --upgrade                              replace this binary with the latest GitHub release");
     Console.WriteLine("  parse   <file.m8p | port>              verify checksums + section map (file or live radio)");
     Console.WriteLine("  dump    <file.m8p | port>              decode every mapped field (file or live radio)");

@@ -64,11 +64,20 @@ internal static class Tui
 
     private static DateTime _lastInputUtc = DateTime.UtcNow;
 
-    internal static int Run(CodeplugImage? initial = null, string? source = null)
+    /// <param name="initial">A codeplug to open on, or null to start empty.</param>
+    /// <param name="source">Where <paramref name="initial"/> came from, for the log line.</param>
+    /// <param name="driver">A Terminal.Gui driver name to force, or null to let it choose. See
+    /// <see cref="TuiDriverChoice"/> for why this is worth being able to change.</param>
+    internal static int Run(CodeplugImage? initial = null, string? source = null, string? driver = null)
     {
         _app = Application.Create();
         try
         {
+            if (driver is not null)
+            {
+                _app.ForceDriver = driver;
+            }
+
             _app.Init();
             GoQuietWhenLeftAlone();
             TuiTheme.Apply();

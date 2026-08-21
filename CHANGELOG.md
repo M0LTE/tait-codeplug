@@ -4,6 +4,21 @@ What changed in each release. The section for a version is lifted into that vers
 
 Newest first. Add a section before tagging.
 
+## 0.8.0 - 2026-08-21
+
+- **`tui --driver <name>`**, and `tui --driver list` to see what your platform offers. Terminal.Gui ships three console drivers (`windows`, `ansi`, `dotnet`) and picks one for you. Since a repaint costs whatever the driver and console between them make it cost, and that varies enormously, this makes it something you can change rather than something you are stuck with.
+- **`tui --bench`** times what one screen repaint actually costs on your console, because a repaint is exactly what one typed character costs. Run it per driver and use the quickest:
+
+```
+tait-codeplug tui --bench
+tait-codeplug tui --bench --driver ansi
+tait-codeplug tui --bench --driver dotnet
+```
+
+  It prints the screen size, the driver, and a median over 30 repaints. For scale, on Linux in tmux at 100x30 this machine gives 17.7 ms on `ansi` and 8.5 ms on `dotnet`; anything under about 30 ms feels instant, and a few hundred milliseconds is the editor feeling sluggish.
+
+This is aimed at the report of typing being slow in the editor **on Windows, with the tool running locally**. That rules out the link, which leaves how the driver hands a repaint to the console, and on Windows that cost is far higher per call than on a Unix pty. Which of the three drivers is quickest there is not something that can be settled from a Linux box, so the tool now measures it where it matters.
+
 ## 0.7.0 - 2026-08-21
 
 - **"Power-cycle the radio now" is a prompt, not a line in the log.** A read or a write puts it on the screen where it cannot be missed, and it takes itself back down the moment the radio answers - the normal case needs no keystroke at all. Cancel, or Esc, abandons the operation, which is the way out when the radio is not going to answer rather than sitting through the full 90-second wait.
