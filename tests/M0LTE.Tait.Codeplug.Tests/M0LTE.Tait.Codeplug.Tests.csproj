@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\M0LTE.Tait.Codeplug\M0LTE.Tait.Codeplug.csproj" />
+    <ProjectReference Include="..\..\src\M0LTE.Tait.Codeplug.Cli\M0LTE.Tait.Codeplug.Cli.csproj" />
   </ItemGroup>
 
 </Project>
