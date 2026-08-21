@@ -75,11 +75,21 @@ Left alone, it goes quiet: the main loop steps down after ten seconds untouched 
 
 It is, and it is worth knowing why before you go looking for a fault at your end. Terminal.Gui repaints the whole screen for every character typed into a text box - about 7-8 bytes per cell on screen, so 22 KB on a 100x30 terminal and 82 KB at 200x50, per keystroke. A minimal Terminal.Gui app does the same, so it is the library rather than this tool, and there is nothing to configure around it.
 
-Locally you will not notice. Across an SSH link to a maximised terminal it is a second or two per character. What helps:
+How much that costs you depends on the console and on which of Terminal.Gui's three drivers is in front of it, and the difference between them is large. Measure it on your own machine rather than trusting a number from someone else's:
+
+```sh
+tait-codeplug tui --driver list      # what this platform offers
+tait-codeplug tui --bench            # time one repaint on the default driver
+tait-codeplug tui --bench --driver ansi
+```
+
+Under about 30ms per repaint feels instant; a few hundred milliseconds is the editor feeling sluggish. If another driver is quicker, use it: `tait-codeplug tui --driver ansi radio.m8p`.
+
+Beyond that:
 
 - Make the terminal window smaller while you are editing: 80x24 costs a sixth of what 200x50 does.
 - Skip the editor for a single value: `tait-codeplug patch /dev/ttyUSB0 ch0.rxfreq 144.812500` does a read-modify-write with no typing in a UI at all.
-- Run the tool on the machine the radio is plugged into, rather than across the link.
+- Over SSH, run the tool on the machine the radio is plugged into rather than across the link.
 
 Colours are true-colour: a dark slate palette, green for read, amber for write (it is the one that changes your radio), red for errors. Terminal.Gui maps them down on a 16- or 256-colour terminal, so it stays legible on a plain console.
 
