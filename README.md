@@ -67,6 +67,8 @@ Run it with no arguments and you get a screen instead of a verb: pick a port, re
 
 The radio work runs off the UI thread, so the screen stays live through the ~25s read and the 90s the connect will wait for your power-cycle.
 
+Left alone, it goes quiet: the main loop steps down after ten seconds untouched and again after a minute, so an editor left open over SSH is not writing to your terminal 25 times a second all afternoon. Typing is unaffected; the one key that wakes it after a long pause can take up to a quarter of a second to register, and everything after it is normal.
+
 Colours are true-colour: a dark slate palette, green for read, amber for write (it is the one that changes your radio), red for errors. Terminal.Gui maps them down on a 16- or 256-colour terminal, so it stays legible on a plain console.
 
 To try the editor without a radio on the bench, open a saved codeplug: `tait-codeplug tui radio.m8p`.

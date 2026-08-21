@@ -44,12 +44,18 @@ internal static class Tui
     private static Window _window = null!;
     private static IApplication _app = null!;
 
+    /// <summary>The loop rate the library starts with, restored the moment a key or mouse event arrives.</summary>
+    private static ushort _activeIterationsPerSecond;
+
+    private static DateTime _lastInputUtc = DateTime.UtcNow;
+
     internal static int Run(CodeplugImage? initial = null, string? source = null)
     {
         _app = Application.Create();
         try
         {
             _app.Init();
+            GoQuietWhenLeftAlone();
             TuiTheme.Apply();
             _window = Build();
             if (initial is not null)
@@ -70,10 +76,42 @@ internal static class Tui
         }
         finally
         {
+            // The loop rate is a static on the library, so hand it back as we found it rather than
+            // leaving a slowed-down rate behind for anything that runs the TUI again in-process.
+            if (_activeIterationsPerSecond > 0)
+            {
+                Application.MaximumIterationsPerSecond = _activeIterationsPerSecond;
+            }
+
             _app.Dispose();
         }
 
         return 0;
+    }
+
+    /// <summary>
+    /// Stop talking to the terminal when nobody is using the tool. The main loop otherwise ticks - and
+    /// rewrites cursor state - 25 times a second for ever, which is invisible locally and is a redraw
+    /// the far end of an SSH link can never stop servicing. <see cref="TuiIdlePolicy"/> has the numbers.
+    /// </summary>
+    private static void GoQuietWhenLeftAlone()
+    {
+        _activeIterationsPerSecond = Application.MaximumIterationsPerSecond;
+        _lastInputUtc = DateTime.UtcNow;
+
+        _app.Keyboard.KeyDown += (_, _) => NoteInput();
+        _app.Mouse.MouseEvent += (_, _) => NoteInput();
+
+        _app.Iteration += (_, _) =>
+            Application.MaximumIterationsPerSecond =
+                TuiIdlePolicy.RateFor(DateTime.UtcNow - _lastInputUtc, _activeIterationsPerSecond);
+    }
+
+    /// <summary>Someone is here: back to the normal loop rate, and the quiet clock restarts.</summary>
+    private static void NoteInput()
+    {
+        _lastInputUtc = DateTime.UtcNow;
+        Application.MaximumIterationsPerSecond = _activeIterationsPerSecond;
     }
 
     private static Window Build()

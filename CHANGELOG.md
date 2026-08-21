@@ -4,6 +4,13 @@ What changed in each release. The section for a version is lifted into that vers
 
 Newest first. Add a section before tagging.
 
+## 0.6.1 - 2026-08-21
+
+- **The interactive mode stops talking to the terminal when nobody is using it.** Terminal.Gui runs its main loop 25 times a second whether or not anything has changed, and rewrites cursor state every time round: sitting there with nothing happening, the tool was emitting ~315 bytes a second in 25 separate writes, for as long as it was open. The loop now steps down after ten seconds untouched and again after a minute. Measured idle output falls from 315 bytes/sec to 128 after a short pause and to 54 after a long one.
+- Typing is not affected: ten keypresses measured at 29-49 ms before the change and 29-49 ms after, because ten seconds is far longer than any pause in typing. What it costs is the single keypress that wakes it up after a long pause, measured over four attempts at 248, 60, 235 and 70 ms - up to a quarter of a second, once, and everything after it is back to normal.
+
+This is a candidate fix for "the UI goes laggy after a few minutes", not a confirmed one, and it is worth being straight about which. On a local terminal the lag does not reproduce: twelve minutes idle held latency flat at 44-73 ms, CPU at 2.1% and file handles constant, and 150 open-and-close cycles of the channel editor held latency flat at ~60 ms with no handle growth. What the tool was doing wrong regardless is the constant output, which over SSH is 25 packets a second the far end can never stop servicing. If it still goes laggy, the thing to say is which terminal and what connection - SSH, tmux, mosh, Windows Terminal - because that is where the remaining suspects live.
+
 ## 0.6.0 - 2026-08-21
 
 - **Keyboard navigation between panels.** `F6` (and `Shift+F6`) moves between Radio, Channels, PDN preset and Log; `Tab` moves within a panel. The panel holding the keyboard now lights its border white, so where you are is visible rather than guesswork. Previously `Tab` could not leave the Radio panel at all, which also meant `Enter` on the channel list never fired: the list could not be reached.
