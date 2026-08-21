@@ -53,6 +53,39 @@ public sealed class CodeplugImage
     /// <summary>Remove every record of a given type. Used when replacing a whole item's records.</summary>
     public void RemoveRecordsInSection(byte section) => _records.RemoveAll(r => r.Section == section);
 
+    /// <summary>The concatenated payload of a section, its records in index order. A section whose
+    /// item is one contiguous bit-stream (the channel table, the CIB index) is split across records
+    /// only for transport, so this is the form to read and write it in.</summary>
+    public byte[] SectionBytes(byte section) => _records
+        .Where(r => r.Section == section)
+        .OrderBy(r => r.Index)
+        .SelectMany(r => r.Data)
+        .ToArray();
+
+    /// <summary>Replace a section with these bytes, split into records the way the CPS splits them:
+    /// fill <paramref name="maxRecordBytes"/> per record, remainder in the last. Observed on real CPS
+    /// saves - a 2-channel table is 32+14 bytes and a 6-channel one is 32+32+32+32+8.</summary>
+    public void SetSectionBytes(byte section, byte[] bytes, int maxRecordBytes = 32)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+        if (maxRecordBytes is < 1 or > 32)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxRecordBytes), maxRecordBytes, "1..32 bytes");
+        }
+
+        if (bytes.Length > maxRecordBytes * 256)
+        {
+            throw new ArgumentOutOfRangeException(nameof(bytes), bytes.Length, "more records than a byte index can address");
+        }
+
+        RemoveRecordsInSection(section);
+        for (int offset = 0, index = 0; offset < bytes.Length; offset += maxRecordBytes, index++)
+        {
+            int length = Math.Min(maxRecordBytes, bytes.Length - offset);
+            SetRecord(new CodeplugRecord(section, (byte)index, bytes[offset..(offset + length)]));
+        }
+    }
+
     /// <summary>Look up a header value by key, or null if absent.</summary>
     public string? HeaderValue(string key) =>
         Header.FirstOrDefault(kv => string.Equals(kv.Key, key, StringComparison.OrdinalIgnoreCase)).Value;

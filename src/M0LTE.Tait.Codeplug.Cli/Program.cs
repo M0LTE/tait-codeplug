@@ -19,6 +19,7 @@
 // version), and bench on a sacrificial radio first. The programming brief they come from is at
 // github.com/packet-net/packet.net/blob/main/docs/research/tait-codeplug-programming-brief.md.
 
+using System.Globalization;
 using M0LTE.Tait.Codeplug;
 using M0LTE.Tait.Codeplug.Cli;
 
@@ -53,6 +54,8 @@ try
             return CmdVersion(Arg(args, 1));
         case "read":
             return CmdRead(Arg(args, 1), args.Length > 2 ? args[2] : null);
+        case "channel":
+            return CmdChannel(args);
         case "upgrade":
         case "--upgrade":
             return SelfUpgrade.RunAsync().GetAwaiter().GetResult();
@@ -72,6 +75,35 @@ catch (Exception ex) when (ex is FormatException or IOException or TimeoutExcept
 {
     Console.Error.WriteLine($"error: {ex.Message}");
     return 2;
+}
+
+// channel add <file.m8p>        - append a channel (a copy of the last one) and save
+// channel delete <file.m8p> <n>  - remove channel n, shifting the ones above it down, and save
+static int CmdChannel(string[] args)
+{
+    string action = Arg(args, 1);
+    string path = Arg(args, 2);
+    CodeplugImage image = CodeplugImage.LoadM8p(File.ReadAllText(path));
+    CodeplugFields fields = CodeplugFields.Open(image);
+
+    switch (action)
+    {
+        case "add":
+            int added = fields.AddChannel();
+            File.WriteAllText(path, image.ToM8p());
+            Console.WriteLine($"added channel {added} (copied from {added - 1}); {fields.ChannelCount} channel(s). saved {path}");
+            return 0;
+
+        case "delete":
+            int index = int.Parse(Arg(args, 3), CultureInfo.InvariantCulture);
+            fields.RemoveChannel(index);
+            File.WriteAllText(path, image.ToM8p());
+            Console.WriteLine($"deleted channel {index}; {fields.ChannelCount} channel(s) left. saved {path}");
+            return 0;
+
+        default:
+            throw new FormatException("channel add <file.m8p> | channel delete <file.m8p> <n>");
+    }
 }
 
 // tui [file.m8p] - the interactive editor, optionally opened on a saved codeplug rather than
@@ -301,6 +333,8 @@ static void PrintUsage()
     Console.WriteLine("  get     <file.m8p | port> [field]      read one field, or all as name=value (file or live radio)");
     Console.WriteLine("  set     <file.m8p> <field> <value>     set one field and save (e.g. ch0.bandwidth Wide)");
     Console.WriteLine("  set     <file.m8p> profile <name>      apply a PDN upgrade profile to a file");
+    Console.WriteLine("  channel add    <file.m8p>              append a channel (a copy of the last one)");
+    Console.WriteLine("  channel delete <file.m8p> <n>          remove channel n, shifting the rest down");
     Console.WriteLine("  version <port>                         interrogate a radio");
     Console.WriteLine("  read    <port> [out.m8p]               read the codeplug (to a file, or stdout if omitted)");
     Console.WriteLine("  patch   <port> <field> <value>         live-set one field (full read-modify-write)");

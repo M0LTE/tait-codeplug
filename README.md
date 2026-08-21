@@ -63,7 +63,7 @@ Run it with no arguments and you get a screen instead of a verb: pick a port, re
 ╰──────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
-`F5` reads the radio (power-cycle it when the log says so), `F3` edits the selected channel, `F2` writes back, `F10` quits. The PDN preset is staged and applied when you write, so choosing one changes nothing until you commit. A write always snapshots the pre-change codeplug to a `tait-codeplug-backup-<timestamp>.m8p` first.
+`F6` moves between panels and `Tab` moves within one; the panel holding the keyboard lights its border. `F5` reads the radio (power-cycle it when the log says so), `F3` edits the selected channel, `F7` adds one, `F8` deletes one, `F2` writes back, `F10` quits. The PDN preset is staged and applied when you write, so choosing one changes nothing until you commit. A write always snapshots the pre-change codeplug to a `tait-codeplug-backup-<timestamp>.m8p` first.
 
 The radio work runs off the UI thread, so the screen stays live through the ~25s read and the 90s the connect will wait for your power-cycle.
 
@@ -86,6 +86,8 @@ tait-codeplug version <port>                       interrogate: model / firmware
 tait-codeplug read    <port> [out.m8p]             read the codeplug (to a file, or stdout if omitted)
 tait-codeplug patch   <port> <field> <value>       live-set one field (backs up first)
 tait-codeplug patch   <port> profile <name>        live-apply a PDN upgrade profile
+tait-codeplug channel add    <file.m8p>            append a channel (a copy of the last one)
+tait-codeplug channel delete <file.m8p> <n>       remove channel n, shifting the rest down
 tait-codeplug tui     [file.m8p]                  interactive mode, optionally on a saved codeplug
 tait-codeplug --upgrade                           replace this binary with the latest release
 ```

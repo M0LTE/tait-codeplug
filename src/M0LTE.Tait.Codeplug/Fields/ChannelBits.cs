@@ -22,6 +22,14 @@ public sealed class ChannelBits
             .ToList();
     }
 
+    /// <summary>Build a stream over raw payloads, in order. Writes land back in the arrays passed in,
+    /// so this is how a table is edited before being chunked back into records.</summary>
+    public ChannelBits(IEnumerable<byte[]> payloads)
+    {
+        ArgumentNullException.ThrowIfNull(payloads);
+        _payloads = payloads.ToList();
+    }
+
     /// <summary>Total number of bits across all channel records.</summary>
     public int TotalBits => _payloads.Sum(p => p.Length) * 8;
 

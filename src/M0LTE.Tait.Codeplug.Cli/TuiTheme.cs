@@ -96,22 +96,32 @@ internal static class TuiTheme
     internal static void Panelise(View frame)
     {
         frame.BorderStyle = LineStyle.Rounded;
-
-        // A Border is not a View here, so it has no scheme of its own - it draws in the owning
-        // frame's Normal. Hence Normal is the ACCENT: it paints the border and title, while the
-        // background stays the panel colour and every child carries its own scheme for its text.
-        frame.SetScheme(new Scheme
-        {
-            Normal = new Attribute(Accent, Panel),
-            HotNormal = new Attribute(Accent, Panel, TextStyle.Bold),
-            Focus = new Attribute(White, SelectionBg),
-            HotFocus = new Attribute(White, SelectionBg, TextStyle.Bold),
-            Highlight = new Attribute(White, SelectionBg),
-            Editable = new Attribute(Text, Inset),
-            ReadOnly = new Attribute(Dim, Panel),
-            Disabled = new Attribute(Dim, Panel),
-        });
+        frame.SetScheme(PanelScheme(focused: false));
     }
+
+    /// <summary>Light the border up while this panel holds the keyboard. Without it, Tab moves focus
+    /// invisibly and the screen looks like it is ignoring you.</summary>
+    internal static void TrackFocus(View panel)
+    {
+        panel.HasFocusChanged += (_, _) => panel.SetScheme(PanelScheme(panel.HasFocus));
+    }
+
+    /// <summary>
+    /// A Border is not a View here, so it has no scheme of its own - it draws in the owning frame's
+    /// Normal. Hence Normal is the accent: it paints the border and title, while the background stays
+    /// the panel colour and every child carries its own scheme for its text.
+    /// </summary>
+    private static Scheme PanelScheme(bool focused) => new()
+    {
+        Normal = focused ? new Attribute(White, Panel, TextStyle.Bold) : new Attribute(Accent, Panel),
+        HotNormal = new Attribute(focused ? White : Accent, Panel, TextStyle.Bold),
+        Focus = new Attribute(White, SelectionBg),
+        HotFocus = new Attribute(White, SelectionBg, TextStyle.Bold),
+        Highlight = new Attribute(White, SelectionBg),
+        Editable = new Attribute(Text, Inset),
+        ReadOnly = new Attribute(Dim, Panel),
+        Disabled = new Attribute(Dim, Panel),
+    };
 
     /// <summary>An action button in one of the accent colours; focus inverts to a filled block so the
     /// keyboard position is obvious without hunting for a cursor.</summary>

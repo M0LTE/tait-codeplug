@@ -37,7 +37,17 @@ public sealed class CodeplugFields
     private const int ChNetwork = 106;     // 3 bits (ChannelNetworkId)
     private const int ChTxPower = 109;     // 3 bits
 
-    private readonly ChannelBits _channels;
+    // A channel exists in two places: its field block in the channel table (0x05) and its entry in the
+    // CIB channel index (0x07, item 7 - CibChannelBlockRec/CibChannelRec/CibChannelID, 15 bits).
+    private const byte ChannelSection = 0x05;
+    private const byte CibSection = 0x07;
+    private const int CibStrideBits = 15;
+    private const int CibBlockRec = 0;     // 1 bit
+    private const int CibRec = 1;          // 7 bits
+    private const int CibId = 8;           // 7 bits
+
+    // Rebuilt whenever the channel table is resized, because it holds the record payloads directly.
+    private ChannelBits _channels;
 
     private CodeplugFields(CodeplugImage image)
     {
@@ -95,6 +105,134 @@ public sealed class CodeplugFields
 
     /// <summary>Number of channels, derived from the channel bit-stream length.</summary>
     public int ChannelCount => _channels.TotalBits / ChannelStrideBits;
+
+    /// <summary>The most channels the CIB index can address: CibChannelRec and CibChannelID are 7 bits
+    /// each. This is the field width, not a claim about what a given radio or the CPS will accept.</summary>
+    public const int MaxChannels = 128;
+
+    /// <summary>
+    /// Append a channel, copying the last one as its starting point, and return the new channel's index.
+    /// </summary>
+    /// <remarks>
+    /// A channel is not one field but a shape change across two items: the channel table (record 0x05)
+    /// grows by <see cref="ChannelStrideBits"/> bits, and the CIB channel index (record 0x07) grows by
+    /// one 15-bit entry. Both are re-chunked into records afterwards.
+    ///
+    /// The new channel starts as a copy of the previous one rather than zeros, because a zeroed channel
+    /// is 0 Hz at power Off - never a thing you would want to write to a radio - whereas a copy is a
+    /// working channel to edit.
+    /// </remarks>
+    public int AddChannel()
+    {
+        int count = ChannelCount;
+        if (count >= MaxChannels)
+        {
+            throw new InvalidOperationException($"the CIB channel index addresses at most {MaxChannels} channels");
+        }
+
+        ResizeChannelTable(count + 1);
+        CopyChannel(count - 1, count);
+        WriteCibTable(count + 1);
+        return count;
+    }
+
+    /// <summary>Remove a channel, shifting the ones above it down.</summary>
+    /// <remarks>
+    /// Anything referring to a channel by number is re-pointed or cleared: a GPS poll-response channel
+    /// left pointing past the end is exactly what the CPS rejects on load (it refuses a Dedicated
+    /// channel reference to a channel that does not exist).
+    /// </remarks>
+    public void RemoveChannel(int channel)
+    {
+        int count = ChannelCount;
+        if (channel < 0 || channel >= count)
+        {
+            throw new ArgumentOutOfRangeException(nameof(channel), channel, $"0..{count - 1}");
+        }
+
+        if (count <= 1)
+        {
+            throw new InvalidOperationException("a codeplug must keep at least one channel");
+        }
+
+        for (int i = channel; i < count - 1; i++)
+        {
+            CopyChannel(i + 1, i);
+        }
+
+        ResizeChannelTable(count - 1);
+        WriteCibTable(count - 1);
+
+        if (HasGps
+            && GpsPollResponseChannelType == GpsPollResponseChannelType.Dedicated
+            && GpsPollResponseChannel > ChannelCount)
+        {
+            GpsPollResponseChannel = 0; // None: better than pointing at a channel that no longer exists
+        }
+    }
+
+    /// <summary>Grow or shrink the channel table to hold exactly this many channels, then rebuild the
+    /// bit-stream view over the new records. Bits past the last channel are cleared: they are padding
+    /// to the byte, and leaving a removed channel's bits lying in them would be untidy at best.</summary>
+    private void ResizeChannelTable(int channels)
+    {
+        int needed = ((channels * ChannelStrideBits) + 7) / 8;
+        byte[] current = Image.SectionBytes(ChannelSection);
+        byte[] resized = new byte[needed];
+        Array.Copy(current, resized, Math.Min(current.Length, needed));
+
+        var bits = new ChannelBits([resized]);
+        for (int bit = channels * ChannelStrideBits; bit < needed * 8; bit++)
+        {
+            bits.SetBits(bit, 1, 0);
+        }
+
+        Image.SetSectionBytes(ChannelSection, resized);
+        _channels = new ChannelBits(Image.Records);
+    }
+
+    /// <summary>Copy one channel's whole bit block over another's.</summary>
+    private void CopyChannel(int from, int to)
+    {
+        if (from == to)
+        {
+            return;
+        }
+
+        int source = from * ChannelStrideBits;
+        int destination = to * ChannelStrideBits;
+        for (int offset = 0; offset < ChannelStrideBits;)
+        {
+            int width = Math.Min(32, ChannelStrideBits - offset);
+            _channels.SetBits(destination + offset, width, _channels.GetBits(source + offset, width));
+            offset += width;
+        }
+    }
+
+    /// <summary>
+    /// Rewrite the CIB channel index (record 0x07) for this many channels: one 15-bit entry each,
+    /// CibChannelBlockRec (1 bit) + CibChannelRec (7) + CibChannelID (7), contiguous and LSB-first.
+    /// </summary>
+    /// <remarks>
+    /// Every multi-channel codeplug read off a radio or saved by the CPS carries block 0 and Rec = ID =
+    /// the channel index (a 2-channel table is 00008100, a 6-channel one 0000810081c0608040502800), so
+    /// that is what gets written. The CPS's own single-channel default file is the one exception, using
+    /// ID 1 for its only channel; a codeplug that has been through here comes out canonical instead.
+    /// </remarks>
+    private void WriteCibTable(int channels)
+    {
+        byte[] table = new byte[((channels * CibStrideBits) + 7) / 8];
+        var bits = new ChannelBits([table]);
+        for (int i = 0; i < channels; i++)
+        {
+            int offset = i * CibStrideBits;
+            bits.SetBits(offset + CibBlockRec, 1, 0);
+            bits.SetBits(offset + CibRec, 7, i);
+            bits.SetBits(offset + CibId, 7, i);
+        }
+
+        Image.SetSectionBytes(CibSection, table);
+    }
 
     /// <summary>TX frequency in Hz for a channel.</summary>
     public long GetTxFrequencyHz(int channel) => Ch(channel, ChTxFreq, 32);

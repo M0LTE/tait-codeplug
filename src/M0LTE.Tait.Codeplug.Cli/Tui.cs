@@ -23,6 +23,9 @@ internal static class Tui
 {
     private static readonly string[] PresetLabels = ["none", "pdn-basic", "pdn-extra"];
 
+    /// <summary>Keep the log bounded: a session left open for hours should not grow a list view for ever.</summary>
+    private const int MaxLogLines = 500;
+
     private static CodeplugImage? _image;
     private static CodeplugFields? _fields;
     private static bool _busy;
@@ -30,13 +33,14 @@ internal static class Tui
     private static readonly ObservableCollection<string> LogLines = [];
     private static readonly ObservableCollection<string> ChannelRows = [];
 
-    private static TextField _portField = null!;
+    private static DropDownList _portField = null!;
     private static ListView _channelList = null!;
     private static ListView _logList = null!;
     private static OptionSelector _presetSelector = null!;
     private static Label _statusLabel = null!;
     private static Button _readButton = null!;
     private static Button _writeButton = null!;
+    private static Label _detectedLabel = null!;
     private static Window _window = null!;
     private static IApplication _app = null!;
 
@@ -60,6 +64,7 @@ internal static class Tui
             }
 
             RefreshChannels();
+            Log("F6 moves between panels, Tab moves within one.");
             SetBusy(false, StatusText());
             _app.Run(_window);
         }
@@ -90,18 +95,22 @@ internal static class Tui
         };
 
         var portLabel = new Label { Text = "Port:", X = 1, Y = 0 };
-        _portField = new TextField { X = 7, Y = 0, Width = 24, Text = FirstPortOrEmpty() };
 
-        string[] ports = SerialPort.GetPortNames();
-        Array.Sort(ports, StringComparer.Ordinal);
-        var detected = new Label
+        // A dropdown of what is actually plugged in, rather than a box you have to know what to type
+        // into. It still derives from a text field, so a port that did not enumerate can be typed.
+        _portField = new DropDownList { X = 7, Y = 0, Width = 26 };
+        RefreshPorts();
+
+        var rescanButton = new Button { Text = "Re_scan", X = 35, Y = 0 };
+        rescanButton.Accepting += (_, e) =>
         {
-            X = 33,
-            Y = 0,
-            Text = ports.Length == 0
-                ? "(no serial ports detected)"
-                : $"detected: {string.Join("  ", ports)}",
+            e.Handled = true;
+            RefreshPorts();
+            Log($"rescanned: {DetectedPortSummary()}");
         };
+
+        var detected = new Label { X = 45, Y = 0, Text = DetectedPortSummary() };
+        _detectedLabel = detected;
 
         _readButton = new Button { Text = "_Read from radio", X = 1, Y = 2 };
         _readButton.Accepting += (_, e) => { e.Handled = true; StartRead(); };
@@ -114,16 +123,17 @@ internal static class Tui
         TuiTheme.Panelise(radio);
         TuiTheme.Body(portLabel);
         TuiTheme.Input(_portField);
+        TuiTheme.Action(rescanButton, TuiAccent.Neutral);
         TuiTheme.Secondary(detected);
         TuiTheme.Action(_readButton, TuiAccent.Read);
         TuiTheme.Action(_writeButton, TuiAccent.Write);
         TuiTheme.Status(_statusLabel, loaded: false);
-        radio.Add(portLabel, _portField, detected, _readButton, _writeButton, _statusLabel);
+        radio.Add(portLabel, _portField, rescanButton, detected, _readButton, _writeButton, _statusLabel);
 
         // --- channels (left) ----------------------------------------------------------------------
         var channels = new FrameView
         {
-            Title = "Channels - Enter or F3 to edit",
+            Title = "Channels",
             X = 0,
             Y = 5,
             Width = Dim.Fill() - 28,
@@ -205,20 +215,113 @@ internal static class Tui
         var status = new StatusBar(
         [
             new Shortcut(Key.F10, "Quit", () => _app.RequestStop(_window)),
-            new Shortcut(Key.F3, "Edit channel", EditSelectedChannel),
+            new Shortcut(Key.F6, "Panel", () =>
+                _app.Navigation?.AdvanceFocus(NavigationDirection.Forward, TabBehavior.TabGroup)),
+            new Shortcut(Key.F3, "Edit", EditSelectedChannel),
+            new Shortcut(Key.F7, "Add", AddChannel),
+            new Shortcut(Key.F8, "Del", DeleteSelectedChannel),
             new Shortcut(Key.F5, "Read", StartRead),
             new Shortcut(Key.F2, "Write", StartWrite),
         ]);
+
+        // Without this a panel is not a focus stop, so Tab never leaves the first one and the rest of
+        // the screen is unreachable from the keyboard.
+        foreach (View panel in new View[] { radio, channels, preset, log })
+        {
+            panel.CanFocus = true;
+            panel.TabStop = TabBehavior.TabGroup;
+            TuiTheme.TrackFocus(panel);
+        }
 
         win.Add(radio, channels, preset, log, status);
         return win;
     }
 
-    private static string FirstPortOrEmpty()
+    /// <summary>Re-enumerate the serial ports into the dropdown, keeping whatever is typed if it is
+    /// not one of them (a port that did not enumerate is still worth trying).</summary>
+    private static void RefreshPorts()
     {
         string[] ports = SerialPort.GetPortNames();
         Array.Sort(ports, StringComparer.Ordinal);
-        return ports.Length > 0 ? ports[0] : string.Empty;
+
+        string current = _portField.Text?.Trim() ?? string.Empty;
+        _portField.Source = new ListWrapper<string>(new ObservableCollection<string>(ports));
+        _portField.Text = current.Length > 0 ? current : ports.FirstOrDefault() ?? string.Empty;
+
+        if (_detectedLabel is not null)
+        {
+            _detectedLabel.Text = DetectedPortSummary();
+        }
+    }
+
+    private static string DetectedPortSummary()
+    {
+        string[] ports = SerialPort.GetPortNames();
+        return ports.Length == 0
+            ? "no ports detected - type one, or Rescan"
+            : $"{ports.Length} port(s) detected";
+    }
+
+    // --- channels ---------------------------------------------------------------------------------
+
+    private static void AddChannel()
+    {
+        if (_fields is null)
+        {
+            Error("Nothing to add to", "Read the radio (F5) or open an .m8p first.");
+            return;
+        }
+
+        try
+        {
+            int added = _fields.AddChannel();
+            RefreshChannels();
+            _channelList.Value = added;
+            Log($"added channel {added}, copied from {added - 1} (not yet written to the radio).");
+            EditSelectedChannel();
+        }
+        catch (InvalidOperationException ex)
+        {
+            Error("Cannot add a channel", ex.Message);
+        }
+    }
+
+    private static void DeleteSelectedChannel()
+    {
+        if (_fields is null)
+        {
+            Error("Nothing to delete", "Read the radio (F5) or open an .m8p first.");
+            return;
+        }
+
+        int index = _channelList.Value ?? 0;
+        if (index < 0 || index >= _fields.ChannelCount)
+        {
+            return;
+        }
+
+        int? answer = MessageBox.Query(
+            _app,
+            "Delete channel",
+            $"Delete channel {index} ({FormatChannel(_fields, index)})?\n\nChannels above it shift down. Nothing reaches the radio until you write.",
+            "Cancel",
+            "Delete");
+        if (answer != 1)
+        {
+            return;
+        }
+
+        try
+        {
+            _fields.RemoveChannel(index);
+            RefreshChannels();
+            _channelList.Value = Math.Min(index, Math.Max(0, _fields.ChannelCount - 1));
+            Log($"deleted channel {index} (not yet written to the radio).");
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentOutOfRangeException)
+        {
+            Error("Cannot delete that channel", ex.Message);
+        }
     }
 
     // --- radio operations -------------------------------------------------------------------------
@@ -538,6 +641,11 @@ internal static class Tui
     private static void Log(string line)
     {
         LogLines.Add($"{DateTime.Now:HH:mm:ss}  {line}");
+        while (LogLines.Count > MaxLogLines)
+        {
+            LogLines.RemoveAt(0);
+        }
+
         _logList.Value = LogLines.Count - 1;
     }
 

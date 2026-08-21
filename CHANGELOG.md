@@ -4,6 +4,17 @@ What changed in each release. The section for a version is lifted into that vers
 
 Newest first. Add a section before tagging.
 
+## 0.6.0 - 2026-08-21
+
+- **Keyboard navigation between panels.** `F6` (and `Shift+F6`) moves between Radio, Channels, PDN preset and Log; `Tab` moves within a panel. The panel holding the keyboard now lights its border white, so where you are is visible rather than guesswork. Previously `Tab` could not leave the Radio panel at all, which also meant `Enter` on the channel list never fired: the list could not be reached.
+- **Add and delete channels.** `F7` adds a channel and opens it for editing; `F8` deletes the selected one after a confirmation. There are buttons for both, and `channel add <file.m8p>` / `channel delete <file.m8p> <n>` do the same from the command line.
+- A new channel starts as a copy of the one before it, because a zeroed channel is 0 Hz at power Off, which is never what you want.
+- Deleting a channel shifts the ones above it down and clears a GPS poll-response channel left pointing past the end, which is exactly what the CPS rejects on load.
+- **The serial port is a dropdown** of detected ports with a Rescan button, instead of a box you had to know what to type into. A port that did not enumerate can still be typed in.
+- The log is capped at 500 lines so a session left open all day cannot grow it without bound.
+
+Adding or removing a channel changes the codeplug's shape, so it is worth saying what it is pinned against: growing the CPS's own 1-channel default file to 2 and to 6 channels reproduces, byte for byte, the channel index table and the record chunking found in a real 2-channel radio readout and a real 6-channel CPS save. Nine tests hold that. It has not yet been written to a radio or loaded back into the CPS.
+
 ## 0.5.0 - 2026-08-21
 
 - **`tait-codeplug --upgrade`**: fetch the latest release for this platform and replace the running binary in place. No more download-and-chmod to move up a version.
