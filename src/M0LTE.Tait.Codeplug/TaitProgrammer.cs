@@ -70,6 +70,13 @@ public sealed class TaitProgrammer : IDisposable
     private int _rxPos;
     private bool _connected;
 
+    /// <summary>
+    /// Raised as a long operation moves along, on the thread doing the work. A UI handler must
+    /// marshal to its own thread. Handlers should be quick: this is raised once per section read and
+    /// once per record written, and a full write is over a thousand records.
+    /// </summary>
+    public event EventHandler<ProgrammerProgress>? Progress;
+
     /// <summary>Wrap an open serial line.</summary>
     public TaitProgrammer(ISerialLine line, ProgrammerOptions? options = null)
     {
@@ -78,12 +85,16 @@ public sealed class TaitProgrammer : IDisposable
     }
 
     /// <summary>Enter programming mode and complete the <c>ld</c>/<c>d00</c> handshake. Idempotent.</summary>
-    public void Connect()
+    /// <param name="cancellationToken">Abandons the wait for the radio. The line is left to the caller
+    /// to dispose; nothing has been written to the radio at this point.</param>
+    public void Connect(CancellationToken cancellationToken = default)
     {
         if (_connected)
         {
             return;
         }
+
+        Report(ProgrammerPhase.WaitingForRadio, 0, 0, "power-cycle the radio now");
 
         // Boot-latch: the read is triggered first and the radio powered on second, so retry the
         // reset probe through the boot window until the radio answers with its 'v' banner.
@@ -91,6 +102,8 @@ public sealed class TaitProgrammer : IDisposable
         int attempt = 0;
         while (true)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             try
             {
                 if (_options.ProbeBauds.Count > 0)
@@ -118,7 +131,11 @@ public sealed class TaitProgrammer : IDisposable
         Transact("ld"); // login/version; radio answers {Cxx}
         Transact("d00"); // select database
         _connected = true;
+        Report(ProgrammerPhase.Connected, 0, 0, "programming mode latched");
     }
+
+    private void Report(ProgrammerPhase phase, int done, int total, string what)
+        => Progress?.Invoke(this, new ProgrammerProgress(phase, done, total, what));
 
     /// <summary>Read the identity block plus the two status sections the CPS interrogate pulls.</summary>
     public TaitIdentity Interrogate()
@@ -134,15 +151,20 @@ public sealed class TaitProgrammer : IDisposable
 
     /// <summary>Read the given sections and assemble a <see cref="CodeplugImage"/>. If
     /// <paramref name="sections"/> is null, the standard set observed in a full CPS read is used.</summary>
-    public CodeplugImage ReadImage(IReadOnlyList<byte>? sections = null)
+    public CodeplugImage ReadImage(IReadOnlyList<byte>? sections = null, CancellationToken cancellationToken = default)
     {
-        Connect();
+        Connect(cancellationToken);
         sections ??= DefaultReadSections;
         var records = new List<CodeplugRecord>();
-        foreach (byte s in sections)
+        for (int i = 0; i < sections.Count; i++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            byte s = sections[i];
+            Report(ProgrammerPhase.Reading, i, sections.Count, $"section {s:X2}");
             records.AddRange(ReadSection(s));
         }
+
+        Report(ProgrammerPhase.Reading, sections.Count, sections.Count, "read complete");
 
         // The CPS requires Radio / Tier / DBVer / Build in the .m8p header, or it refuses to load
         // the file ("unrecognised format or invalid database version"). DBVer comes from the
@@ -177,10 +199,10 @@ public sealed class TaitProgrammer : IDisposable
     /// a <c>w&lt;record&gt;</c> per record awaiting each prompt, <c>e</c>). Section 0 (the read-only
     /// identity) is skipped, matching the CPS. Returns the number of records written.
     /// </summary>
-    public int WriteImage(CodeplugImage image)
+    public int WriteImage(CodeplugImage image, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(image);
-        return WriteRecords(image.Records);
+        return WriteRecords(image.Records, cancellationToken);
     }
 
     /// <summary>
@@ -190,10 +212,10 @@ public sealed class TaitProgrammer : IDisposable
     /// in place without rewriting the rest. Section 0 (the read-only identity) is always skipped.
     /// Returns the number of records written.
     /// </summary>
-    public int WriteRecords(IEnumerable<CodeplugRecord> records)
+    public int WriteRecords(IEnumerable<CodeplugRecord> records, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(records);
-        Connect();
+        Connect(cancellationToken);
 
         var toWrite = records.Where(r => r.Section != 0x00).ToList();
         if (toWrite.Count == 0)
@@ -202,6 +224,7 @@ public sealed class TaitProgrammer : IDisposable
         }
 
         // Faithful preamble reads (harmless, and what the CPS does before a write).
+        Report(ProgrammerPhase.PreparingWrite, 0, toWrite.Count, "preamble and database-version guard");
         ReadSection(0x00);
         Transact("p01");
         IReadOnlyList<CodeplugRecord> versionRecords = ReadSection(0x27);
@@ -211,15 +234,22 @@ public sealed class TaitProgrammer : IDisposable
         Transact("p01");
         ReadSection(0x22);
 
+        // Last chance to abandon: once the write block is open the radio's codeplug is being
+        // modified, and stopping half way would leave it open and partly applied - worse than
+        // finishing. So the token is checked here and not again inside the block.
+        cancellationToken.ThrowIfCancellationRequested();
+
         Transact("b"); // begin
         Transact("i" + _options.WriteInitArg); // init/unlock
 
-        foreach (CodeplugRecord r in toWrite)
+        for (int i = 0; i < toWrite.Count; i++)
         {
-            Transact("w" + r.ToWireLine());
+            Transact("w" + toWrite[i].ToWireLine());
+            Report(ProgrammerPhase.Writing, i + 1, toWrite.Count, $"record {i + 1} of {toWrite.Count}");
         }
 
         Transact("e"); // end/commit
+        Report(ProgrammerPhase.Committed, toWrite.Count, toWrite.Count, "write committed");
         return toWrite.Count;
     }
 

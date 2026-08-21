@@ -41,6 +41,21 @@ internal static class Tui
     private static Button _readButton = null!;
     private static Button _writeButton = null!;
     private static Label _detectedLabel = null!;
+    private static ProgressBar _progress = null!;
+    private static Label _progressLabel = null!;
+
+    /// <summary>Cancels the radio operation in flight, from the power-cycle prompt's Cancel button.</summary>
+    private static CancellationTokenSource? _radioCancel;
+
+    /// <summary>The power-cycle prompt while it is up, so the read/write can dismiss it itself.</summary>
+    private static Dialog? _powerCyclePrompt;
+
+    private static bool _radioLatched;
+
+    /// <summary>Set once the operation has ended of its own accord, so dismissing the prompt after
+    /// that is not mistaken for cancelling.</summary>
+    private static bool _radioFinished;
+    private static TuiProgressThrottle _progressThrottle = new();
     private static Window _window = null!;
     private static IApplication _app = null!;
 
@@ -136,7 +151,10 @@ internal static class Tui
 
         // A dropdown of what is actually plugged in, rather than a box you have to know what to type
         // into. It still derives from a text field, so a port that did not enumerate can be typed.
-        _portField = new DropDownList { X = 7, Y = 0, Width = 26 };
+        // ReadOnly is a DropDownList's default, and it makes the box a picker you cannot type into -
+        // so on a machine where the radio's port does not enumerate (a plain USB-serial cable often
+        // does not), there was no way to name one. Editable makes it the combo box it looks like.
+        _portField = new DropDownList { X = 7, Y = 0, Width = 26, ReadOnly = false };
         RefreshPorts();
 
         var rescanButton = new Button { Text = "Re_scan", X = 35, Y = 0 };
@@ -158,6 +176,12 @@ internal static class Tui
 
         _statusLabel = new Label { X = 42, Y = 2, Text = "no codeplug loaded" };
 
+        // Idle, these are hidden and the status label has the row to itself: an empty bar sitting
+        // there permanently reads as broken. They sit on the button row rather than the one above it,
+        // which carries the drop shadows of the port box and the Rescan button.
+        _progress = new ProgressBar { X = 42, Y = 2, Width = 26, Height = 1, Visible = false, Fraction = 0f };
+        _progressLabel = new Label { X = 70, Y = 2, Text = string.Empty, Visible = false };
+
         TuiTheme.Panelise(radio);
         TuiTheme.Body(portLabel);
         TuiTheme.Input(_portField);
@@ -166,7 +190,9 @@ internal static class Tui
         TuiTheme.Action(_readButton, TuiAccent.Read);
         TuiTheme.Action(_writeButton, TuiAccent.Write);
         TuiTheme.Status(_statusLabel, loaded: false);
-        radio.Add(portLabel, _portField, rescanButton, detected, _readButton, _writeButton, _statusLabel);
+        TuiTheme.Secondary(_progressLabel);
+        radio.Add(portLabel, _portField, rescanButton, detected, _readButton, _writeButton, _statusLabel,
+            _progress, _progressLabel);
 
         // --- channels (left) ----------------------------------------------------------------------
         var channels = new FrameView
@@ -379,13 +405,16 @@ internal static class Tui
         }
 
         SetBusy(true, $"reading {port}...");
-        Log($"opening {port} at 19200 8N1 - POWER-CYCLE THE RADIO NOW to latch programming mode.");
+        Log($"opening {port} at 19200 8N1 - power-cycle the radio to latch programming mode.");
+
+        CancellationToken token = BeginRadioOperation();
 
         RunOffThread(
             () =>
             {
                 using var programmer = new TaitProgrammer(new SerialPortLine(port), HardwareOptions());
-                return programmer.ReadImage();
+                programmer.Progress += OnProgress;
+                return programmer.ReadImage(cancellationToken: token);
             },
             image =>
             {
@@ -393,6 +422,8 @@ internal static class Tui
                 Log($"read {image.Records.Count} records, all checksums verified.");
                 LoadFields();
             });
+
+        PromptToPowerCycle("Reading the radio");
     }
 
     private static void StartWrite()
@@ -439,6 +470,7 @@ internal static class Tui
         CodeplugFields fields = _fields;
 
         SetBusy(true, $"writing {port}...");
+        CancellationToken token = BeginRadioOperation();
 
         RunOffThread(
             () =>
@@ -456,7 +488,8 @@ internal static class Tui
                 File.WriteAllText(backup, image.ToM8p());
 
                 using var programmer = new TaitProgrammer(new SerialPortLine(port), HardwareOptions());
-                int written = programmer.WriteImage(image);
+                programmer.Progress += OnProgress;
+                int written = programmer.WriteImage(image, token);
                 return (backup, written);
             },
             result =>
@@ -470,6 +503,149 @@ internal static class Tui
                 Log($"wrote {result.written} records. Power-cycle and re-read to verify - "
                     + "read-back in the same session is unreliable after a write.");
             });
+
+        PromptToPowerCycle("Writing to the radio");
+    }
+
+    // --- the power-cycle prompt and progress ------------------------------------------------------
+
+    /// <summary>Set up cancellation and progress state for a read or a write, and return the token the
+    /// worker should carry.</summary>
+    private static CancellationToken BeginRadioOperation()
+    {
+        _radioCancel?.Dispose();
+        _radioCancel = new CancellationTokenSource();
+        _radioLatched = false;
+        _radioFinished = false;
+        _progressThrottle = new TuiProgressThrottle();
+        ShowProgress(null, string.Empty);
+        return _radioCancel.Token;
+    }
+
+    /// <summary>
+    /// The one instruction the operator has to act on, in front of them rather than as a line in the
+    /// log they may not be looking at. It takes itself down the moment the radio answers, so the
+    /// normal case needs no keystroke at all; Cancel (or Esc) abandons the operation, which is the
+    /// escape route when the radio is not going to answer.
+    /// </summary>
+    private static void PromptToPowerCycle(string title)
+    {
+        if (_radioLatched)
+        {
+            return;     // the radio was already listening; no need to ask for anything
+        }
+
+        var dialog = new Dialog
+        {
+            Title = title,
+            Width = 62,
+            Height = 15,
+            BorderStyle = LineStyle.Rounded,
+        };
+
+        var instruction = new Label
+        {
+            X = Pos.Center(),
+            Y = 1,
+            Text = "POWER-CYCLE THE RADIO NOW",
+        };
+
+        var detail = new Label
+        {
+            X = 2,
+            Y = 3,
+            Text = "Switch it off and back on. The radio latches\nprogramming mode as it boots, so the tool has to be\nlistening before that happens - which it now is.",
+        };
+
+        var waiting = new Label
+        {
+            X = 2,
+            Y = 7,
+            Text = "Waiting up to 90 seconds. This box closes itself as\nsoon as the radio answers - no keystroke needed.",
+        };
+
+        var cancel = new Button { Text = "Cancel", IsDefault = true };
+        cancel.Accepting += (_, e) =>
+        {
+            e.Handled = true;
+            _app.RequestStop(dialog);
+        };
+
+        TuiTheme.Alert(instruction);
+        TuiTheme.Secondary(waiting);
+        dialog.AddButton(cancel);
+        dialog.Add(instruction, detail, waiting);
+
+        _powerCyclePrompt = dialog;
+        try
+        {
+            _app.Run(dialog);
+        }
+        finally
+        {
+            _powerCyclePrompt = null;
+            dialog.Dispose();
+        }
+
+        // However the box went away - the Cancel button, Esc, anything else - if the radio has not
+        // answered and the operation has not ended on its own, the operator is done waiting. Without
+        // this, Esc would take the prompt off the screen and leave the read running invisibly for the
+        // rest of its 90-second wait.
+        if (!_radioLatched && !_radioFinished)
+        {
+            _radioCancel?.Cancel();
+            Log("cancelled - the radio was not answering.");
+        }
+    }
+
+    /// <summary>Progress arrives on the worker thread; everything it touches lives on the UI thread.</summary>
+    private static void OnProgress(object? sender, ProgrammerProgress p) => _app.Invoke(() => ApplyProgress(p));
+
+    private static void ApplyProgress(ProgrammerProgress p)
+    {
+        if (p.Phase == ProgrammerPhase.Connected)
+        {
+            _radioLatched = true;
+            Log("radio latched into programming mode.");
+            if (_powerCyclePrompt is { } prompt)
+            {
+                _app.RequestStop(prompt);
+            }
+
+            return;
+        }
+
+        bool isFinal = p.Phase is ProgrammerPhase.Committed || (p.Total > 0 && p.Done >= p.Total);
+        if (!_progressThrottle.ShouldDraw(p.Fraction, isFinal, DateTime.UtcNow))
+        {
+            return;
+        }
+
+        string verb = p.Phase switch
+        {
+            ProgrammerPhase.Reading => "reading",
+            ProgrammerPhase.PreparingWrite => "preparing",
+            ProgrammerPhase.Writing => "writing",
+            ProgrammerPhase.Committed => "committed",
+            _ => "working",
+        };
+
+        // Compact on purpose: this shares a row with the two buttons, and a caption that runs off the
+        // panel is worse than one that says less.
+        ShowProgress(p.Fraction, p.Fraction is { } f
+            ? $"{verb} {f * 100:F0}% ({p.Done}/{p.Total})"
+            : $"{verb} - {p.What}");
+    }
+
+    /// <summary>Show the bar and its caption, or hide both when there is nothing running.</summary>
+    private static void ShowProgress(double? fraction, string caption)
+    {
+        bool show = fraction is not null || caption.Length > 0;
+        _progress.Visible = show;
+        _progressLabel.Visible = show;
+        _statusLabel.Visible = !show;       // they share the row: the bar says more while it is up
+        _progress.Fraction = (float)(fraction ?? 0);
+        _progressLabel.Text = caption;
     }
 
     private static ProgrammerOptions HardwareOptions() => new()
@@ -488,21 +664,45 @@ internal static class Tui
                 T result = work();
                 _app.Invoke(() =>
                 {
+                    FinishRadioOperation();
                     onSuccess(result);
                     SetBusy(false, StatusText());
                 });
             }
+            catch (OperationCanceledException)
+            {
+                // Cancelling is a decision, not a fault: no dialog, and the prompt is already gone.
+                _app.Invoke(() =>
+                {
+                    FinishRadioOperation();
+                    SetBusy(false, StatusText());
+                });
+            }
             catch (Exception ex) when (ex is IOException or TimeoutException or InvalidOperationException
-                                       or ArgumentException or UnauthorizedAccessException or FormatException)
+                                       or ArgumentException or UnauthorizedAccessException or FormatException
+                                       or NotSupportedException)
             {
                 _app.Invoke(() =>
                 {
+                    FinishRadioOperation();
                     Log($"error: {ex.Message}");
                     SetBusy(false, StatusText());
                     Error("Radio error", ex.Message);
                 });
             }
         });
+    }
+
+    /// <summary>Take the prompt and the bar down, whatever the operation's outcome was.</summary>
+    private static void FinishRadioOperation()
+    {
+        _radioFinished = true;
+        if (_powerCyclePrompt is { } prompt)
+        {
+            _app.RequestStop(prompt);
+        }
+
+        ShowProgress(null, string.Empty);
     }
 
     // --- codeplug state ---------------------------------------------------------------------------
