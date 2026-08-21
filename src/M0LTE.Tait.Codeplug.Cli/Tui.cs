@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Reflection;
 using System.Globalization;
 using System.IO.Ports;
 using M0LTE.Tait.Codeplug;
@@ -76,7 +75,7 @@ internal static class Tui
     {
         var win = new Window
         {
-            Title = $"tait-codeplug {Version} - Tait TM8100/TM8200 codeplug editor",
+            Title = $"tait-codeplug {CliVersion.Current} - Tait TM8100/TM8200 codeplug editor",
             BorderStyle = LineStyle.Rounded,
         };
 
@@ -213,23 +212,6 @@ internal static class Tui
 
         win.Add(radio, channels, preset, log, status);
         return win;
-    }
-
-    /// <summary>The informational version, minus any build metadata, for the title bar.</summary>
-    private static string Version
-    {
-        get
-        {
-            string? v = typeof(Tui).Assembly
-                .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-            if (string.IsNullOrWhiteSpace(v))
-            {
-                return string.Empty;
-            }
-
-            int plus = v.IndexOf('+', StringComparison.Ordinal);
-            return plus < 0 ? v : v[..plus];
-        }
     }
 
     private static string FirstPortOrEmpty()

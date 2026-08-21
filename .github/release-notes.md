@@ -13,6 +13,8 @@ chmod +x tait-codeplug-__VER__-*
 
 Assets: `linux-x64`, `linux-arm64`, `linux-arm` (armv7 / 32-bit Pi), `win-x64`, `osx-x64` (Intel), `osx-arm64` (Apple Silicon). `SHA256SUMS` covers every asset - verify with `sha256sum -c SHA256SUMS` (or `shasum -a 256 -c` on macOS).
 
+Already have an older copy? `tait-codeplug --upgrade` pulls this release for your platform, verifies it against `SHA256SUMS`, and replaces itself in place.
+
 Run it with no arguments for the interactive editor: a port selector, the channel table (frequency, bandwidth, power), the PDN preset picker, and read/write buttons. `tait-codeplug tui <file.m8p>` opens it on a saved codeplug instead of reading a radio.
 
 Common commands: `dump <file.m8p | port>` (decode every field), `get` / `set <file.m8p> <field> <value>`, `set <file.m8p> profile pdn-basic|pdn-extra`, and the hardware verbs `version` / `read` / `patch <port> ...` (power-cycle the radio into programming mode as you trigger). The write path is version-pinned and backs up before writing; it never touches firmware.

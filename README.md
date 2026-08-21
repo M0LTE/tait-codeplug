@@ -87,7 +87,10 @@ tait-codeplug read    <port> [out.m8p]             read the codeplug (to a file,
 tait-codeplug patch   <port> <field> <value>       live-set one field (backs up first)
 tait-codeplug patch   <port> profile <name>        live-apply a PDN upgrade profile
 tait-codeplug tui     [file.m8p]                  interactive mode, optionally on a saved codeplug
+tait-codeplug --upgrade                           replace this binary with the latest release
 ```
+
+`--upgrade` fetches the release build for your platform, checks it against the release's own `SHA256SUMS`, and renames it over the running binary. Nothing is replaced unless the checksum matches, and the swap is a rename, so a failure at any point leaves what you have working. It refuses early if it cannot write where the binary lives, rather than downloading 40 MB first to find out.
 
 The radio must be latched into programming mode: power-cycle it as the command connects. Progress and
 prompts go to stderr, so `read <port> > radio.m8p` gives you a clean `.m8p` on stdout.

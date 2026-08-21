@@ -53,6 +53,9 @@ try
             return CmdVersion(Arg(args, 1));
         case "read":
             return CmdRead(Arg(args, 1), args.Length > 2 ? args[2] : null);
+        case "upgrade":
+        case "--upgrade":
+            return SelfUpgrade.RunAsync().GetAwaiter().GetResult();
         case "tui":
             return CmdTui(args.Length > 1 ? args[1] : null);
         case "help":
@@ -292,6 +295,7 @@ static void PrintUsage()
     Console.WriteLine("usage:");
     Console.WriteLine("  (no arguments)                         interactive mode: pick a port, read, edit, write");
     Console.WriteLine("  tui     [file.m8p]                     interactive mode, optionally opened on a saved codeplug");
+    Console.WriteLine("  --upgrade                              replace this binary with the latest GitHub release");
     Console.WriteLine("  parse   <file.m8p | port>              verify checksums + section map (file or live radio)");
     Console.WriteLine("  dump    <file.m8p | port>              decode every mapped field (file or live radio)");
     Console.WriteLine("  get     <file.m8p | port> [field]      read one field, or all as name=value (file or live radio)");
