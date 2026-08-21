@@ -38,6 +38,10 @@ jobs:
       id-token: write   # OIDC token for nuget.org trusted publishing
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Full history: the release notes fall back to commit subjects since the previous tag
+          # when CHANGELOG.md has no section for this version.
+          fetch-depth: 0
 
       - uses: actions/setup-dotnet@v6
         with:
@@ -130,7 +134,39 @@ jobs:
           sha256sum tait-codeplug-* > SHA256SUMS
           cat SHA256SUMS
           cd ..
-          sed "s/__VER__/${VERSION}/g; s#__REPO__#${REPO}#g" .github/release-notes.md > release/NOTES.md
+          # Release notes = what changed in this version, then how to install it. The changes come
+          # from CHANGELOG.md; if that has no section for this version (someone forgot), fall back to
+          # the commit subjects since the previous tag so a release never ships an empty list.
+          awk -v ver="${VERSION}" '
+            substr($0, 1, 3) == "## " {
+              if (inside) { exit }
+              split(substr($0, 4), header, " ")
+              if (header[1] == ver) { inside = 1 }
+              next
+            }
+            inside { print }
+          ' CHANGELOG.md > release/CHANGES.md
+
+          if [ ! -s release/CHANGES.md ]; then
+            echo "::warning::CHANGELOG.md has no section for ${VERSION}; using commit subjects instead."
+            previous=$(git describe --tags --abbrev=0 "v${VERSION}^" 2>/dev/null || true)
+            if [ -n "${previous}" ]; then
+              git log --format='- %s' "${previous}..v${VERSION}" > release/CHANGES.md
+            else
+              git log --format='- %s' -20 "v${VERSION}" > release/CHANGES.md
+            fi
+          fi
+
+          {
+            echo "## What's changed in ${VERSION}"
+            echo
+            cat release/CHANGES.md
+            echo
+            echo "---"
+            echo
+            sed "s/__VER__/${VERSION}/g; s#__REPO__#${REPO}#g" .github/release-notes.md
+          } > release/NOTES.md
+          cat release/NOTES.md
           gh release create "v${VERSION}" \
             release/tait-codeplug-"${VERSION}"-linux-x64 \
             release/tait-codeplug-"${VERSION}"-linux-arm64 \

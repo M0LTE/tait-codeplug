@@ -124,6 +124,8 @@ runtime CCDI/transparent-mode driver these profiles provision a radio for.
 
 ## Releasing
 
+Add a section to [`CHANGELOG.md`](CHANGELOG.md) for the version first: its bullets become the "What's changed" list at the top of the GitHub release, above the install instructions. If you forget, the release falls back to the commit subjects since the previous tag and the run logs a warning.
+
 A `v*` tag runs [`.github/workflows/publish.yml`](.github/workflows/publish.yml): it gates on the test
 suite, pushes `M0LTE.Tait.Codeplug` to nuget.org via trusted publishing (OIDC, no stored API key), then
 cross-publishes the six CLI binaries and attaches them plus `SHA256SUMS` to a GitHub Release.
