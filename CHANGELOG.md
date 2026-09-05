@@ -7,6 +7,7 @@ Newest first. Add a section before tagging.
 ## Unreleased
 
 - **Adding or deleting a channel now actually changes the radio.** The channel table and channel index grew and shrank correctly, but the entry counts for those two items in the item index (record 0x01) were left as they were. The radio sizes each item from that count, not from the bytes it is sent, so a two-channel write was accepted and committed and then read back as one channel: the added channel was silently dropped. Both counts now move with the channel count, the way the tone-table path already did. Bench-validated on a TM8100 (DBVer 0094): add a channel, write, power-cycle, read - byte-identical to what was sent; then delete it and the same again.
+- **The interactive mode's backup is now the pre-change codeplug.** It was meant to be, and the README says it is, but the write backed up the image it was about to send, which already carried every edit made in the editor: `CodeplugFields` edits the image's records in place, so by write time there was no unedited copy left to save. The backup now comes from a snapshot serialised the moment the codeplug is read from the radio or loaded from a file, before anything can touch it, and is re-taken after each committed write so a second write in the same session backs up what the radio actually held. The `patch` verb was never affected: it takes its own byte snapshot before editing.
 
 ## 0.8.0 - 2026-08-21
 
