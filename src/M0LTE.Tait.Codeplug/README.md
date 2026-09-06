@@ -56,16 +56,23 @@ CodeplugImage live = programmer.ReadImage();
 
 ## PDN upgrade profiles
 
-Two composable patches that *upgrade a radio to the Packet.NET feature set* without touching its RF
+Composable patches that *upgrade a radio to the Packet.NET feature set* without touching its RF
 config (channels, frequencies, power), so they layer safely onto a radio already provisioned for its
-environment. They change only the data record (0x09). For a radio arriving from a foreign application,
-prefer a clean flash of a full codeplug first, then apply a profile.
+environment. They change the data record (0x09), the audio block (0x3B), the digital I/O lines they
+program (0x37) and the PTT table (0x19). For a radio arriving from a foreign application, prefer a
+clean flash of a full codeplug first, then apply a profile.
 
 - **`pdn-basic`** enables the CCDI command channel that carries `Packet.Radio.Tait`'s telemetry and
   control: averaged/instantaneous RSSI, forward/reverse power, PA temperature, status/identity,
   transmitter keying, and the PROGRESS stream for carrier-sense (DCD) and external-PTT edges. It sets
   CCDI-mode-allowed on, power-up state to Command (so the radio is always CCDI-reachable), progress
-  messages on, and the command baud to 28800.
+  messages on, and the command baud to 28800. It also wires the modem to the auxiliary connector: the
+  `audio packet-defaults` block (Rx tap-out **R1**, type Split so the speaker keeps working, unmute
+  **Except on PTT**; EPTT1 tap-in **T13**), **AUX_GPI1 as an active-low External PTT 1 input** (the line
+  a soundcard interface or TNC keys), and **External PTT 1 transmitting Data from the Audio Tap In**
+  rather than Voice from the aux mic - without that last one the line keys the radio but puts the wrong
+  audio on air. Those three records come out byte-identical to a CPS save of the same configuration on
+  a default TM8100 codeplug.
 - **`pdn-extra`** includes `pdn-basic` and adds the TNC-less internal FFSK packet modem plus the SDM
   side channel used for mode signalling: transparent mode on, **ignore-escape-sequence off** (so the
   transport can escape back to command mode - without this the radio wedges), ignore-subaudible on the
@@ -77,8 +84,23 @@ prefer a clean flash of a full codeplug first, then apply a profile.
   tap-out **R2** split, flat discriminator audio, unmuted Except on PTT so the modem hears every burst
   from its first millisecond and does its own carrier detect; EPTT1 tap-in T13 - the `audio
   packet-defaults` block with the tap point moved to R2), and programs **IOP_GPIO1 as an active-low External PTT 1 input**, the
-  line the board's PTT transistor pulls low. Unlike the other two it does change the audio block and one
-  digital I/O line, because the board is nothing without them; RF configuration is still untouched.
+  line the board's PTT transistor pulls low. Because the keying line moves onto the options connector
+  it also **releases AUX_GPI1** back to Unassigned - the input `pdn-basic` programs for a modem on the
+  auxiliary connector - so only the board can key the radio and a floating aux pin cannot. External
+  PTT 1 stays set to transmit Data from the Audio Tap In: that is the keying source the board's line
+  is wired to, only the pin changes. RF configuration is still untouched.
+
+## PTT sources
+
+The PTT form is record 0x19: three 31-bit entries packed LSB-first with no padding, one per keying
+source - `PttSource.Ptt`, `ExternalPtt1`, `ExternalPtt2` - so entry *n* starts at bit 31*n*. One field
+of each entry is mapped: bits 11-12, which carry the CPS's "PTT Transmission Type" and "Audio Source"
+pair. As with the digital lines these are whole combinations lifted from real CPS saves rather than a
+bit per dropdown, exposed as `PttTransmission`: `Voice` (Transmission Type Voice, Audio Source AUX MIC -
+the default for all three sources) and `DataFromAudioTapIn` (Transmission Type Data, Audio Source Audio
+Tap In - what an external modem keying the radio wants). Anything else reads `Other`, is preserved, and
+is refused for writing. `get radio.m8p | grep ptt.` lists all three; `set radio.m8p ptt.eptt1
+DataFromAudioTapIn` sets one.
 
 ## Programmable I/O digital lines
 

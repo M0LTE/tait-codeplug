@@ -380,7 +380,9 @@ static void PrintUsage()
     Console.WriteLine("  patch   <port> profile <name>          live-apply a PDN upgrade profile");
     Console.WriteLine();
     Console.WriteLine("PDN upgrade profiles (leave RF/channels untouched; adjust data port + bauds for your setup):");
-    Console.WriteLine("  pdn-basic   CCDI telemetry + control: RSSI, forward/reverse power, status, PTT, DCD");
+    Console.WriteLine("  pdn-basic   CCDI telemetry + control (RSSI, fwd/rev power, status, PTT, DCD), and the");
+    Console.WriteLine("              aux-connector modem wiring: audio taps R1/split/except-on-PTT + T13,");
+    Console.WriteLine("              AUX_GPI1 = External PTT 1, EPTT1 transmits data from the audio tap in");
     Console.WriteLine("  pdn-extra   pdn-basic + the TNC-less internal FFSK packet modem and SDM mode signalling");
     Console.WriteLine("  pdn-internal pdn-extra + data port Internal Options, packet audio taps, IOP_GPIO1 = External PTT 1");
     Console.WriteLine();

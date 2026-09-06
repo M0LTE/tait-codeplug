@@ -107,6 +107,8 @@ public enum DataPort : byte
 /// <summary>RX tap-out unmute condition. Stored in bits [3:1] of a byte in the audio block.</summary>
 public enum TapOutUnmute : byte
 {
+    /// <summary>Unmuted while the radio is transmitting. The CPS default.</summary>
+    OnPtt = 0x00,
     BusyDetect = 0x02,
     BusyDetectSubaudible = 0x04,
     RxMuteOpen = 0x06,
@@ -138,6 +140,43 @@ public enum TxInhibit : byte
     None = 0,
     Busy = 1,
     Mute = 2,
+}
+
+/// <summary>The transmitter keying sources on the CPS PTT form, in the order the codeplug's PTT
+/// table (record 0x19) holds them: one 31-bit entry each.</summary>
+public enum PttSource
+{
+    /// <summary>The microphone / front-panel PTT (the form's "PTT" section).</summary>
+    Ptt = 0,
+
+    /// <summary>The first external PTT input, keyed by whichever digital I/O line is programmed
+    /// <see cref="DigitalIoRole.ExternalPtt1Input"/> (the form's "External PTT (1)" section).</summary>
+    ExternalPtt1 = 1,
+
+    /// <summary>The second external PTT input (the form's "External PTT (2)" section).</summary>
+    ExternalPtt2 = 2,
+}
+
+/// <summary>
+/// What a PTT source transmits when it keys the radio: the CPS's "PTT Transmission Type" and "Audio
+/// Source" pair, which share one 2-bit field in the PTT entry. As with <see cref="DigitalIoRole"/>
+/// these are whole combinations pinned to real CPS saves rather than a bit per dropdown - one save
+/// cannot say which of the two bits carries which dropdown - so a combination that has not been
+/// captured reads as <see cref="Other"/> and cannot be written.
+/// </summary>
+public enum PttTransmission
+{
+    /// <summary>Transmission Type "Voice", Audio Source "AUX MIC": the CPS default for all three
+    /// sources.</summary>
+    Voice,
+
+    /// <summary>Transmission Type "Data", Audio Source "Audio Tap In": the source transmits whatever
+    /// arrives at its audio tap-in point, which is what an external modem keying the radio wants.</summary>
+    DataFromAudioTapIn,
+
+    /// <summary>A combination this map does not recognise. Read-only: the bits are preserved but
+    /// cannot be described or set.</summary>
+    Other,
 }
 
 /// <summary>The programmable digital I/O lines (Programmable I/O form, Digital tab), in the order the

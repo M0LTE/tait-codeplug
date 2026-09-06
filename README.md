@@ -130,11 +130,20 @@ signalling - **without touching RF config** (channels, frequencies, power), so t
 radio already provisioned for its environment. See the
 [library README](src/M0LTE.Tait.Codeplug/README.md#pdn-upgrade-profiles) for exactly what each one sets.
 
+All three also wire the modem's audio and PTT, which no profile used to do. `pdn-basic` and `pdn-extra`
+wire the **auxiliary connector**, for a soundcard interface or TNC: Rx tap-out R1, type Split, unmuted
+except on PTT; EPTT1 tap-in T13; AUX_GPI1 as an active-low External PTT 1 input; and External PTT 1
+transmitting Data from the Audio Tap In instead of Voice from the aux mic. Those three records come out
+byte-identical to a CPS save of the same configuration on a default TM8100 codeplug. The PTT sources are
+settable on their own too: `set radio.m8p ptt.eptt1 DataFromAudioTapIn` (or `Voice`); `get radio.m8p |
+grep ptt.` lists all three.
+
 `pdn-internal` is the one for a radio with a Packet.NET internal options board fitted: `pdn-extra` plus
-the data port on Internal Options, the audio taps for a sound-card modem (R2 out, unmuted except on
-PTT, T13 in), and IOP_GPIO1 programmed as an active-low External PTT 1 input for the board's PTT line. The PTT line is also settable on its own:
-`set radio.m8p gpio.iop_gpio1 ExternalPtt1Input` (or `Unassigned`, or `BusyStatusOutput` on a line that
-can be an output); `get radio.m8p | grep gpio` lists every line.
+the data port on Internal Options, the tap-out moved to R2 for a sound-card modem, and IOP_GPIO1
+programmed as an active-low External PTT 1 input for the board's PTT line. It releases AUX_GPI1 again,
+so only the board can key the radio. Every PTT line is settable on its own: `set radio.m8p
+gpio.iop_gpio1 ExternalPtt1Input` (or `Unassigned`, or `BusyStatusOutput` on a line that can be an
+output); `get radio.m8p | grep gpio` lists every line.
 
 ## Safety
 

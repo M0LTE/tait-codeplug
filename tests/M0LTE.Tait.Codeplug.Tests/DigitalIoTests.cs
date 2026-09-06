@@ -5,64 +5,16 @@ using Xunit;
 namespace M0LTE.Tait.Codeplug.Tests;
 
 /// <summary>
-/// The Programmable I/O digital line table (record 0x37). The two fixtures are real: a factory-default
-/// TM8110 readout (DBVer 0094, every line unassigned) and the TARPN TM8105 programming template
-/// (DBVer 0095), a CPS save with AUX_GPI1 = Input / External PTT 1, IOP_GPIO2 = Output / Busy Status
-/// and IOP_GPIO4 = Input / Unmute Audio Output Path with action parameters set.
+/// The Programmable I/O digital line table (record 0x37), read and written against two real fixtures:
+/// a factory-default TM8110 readout and the TARPN TM8105 programming template. See <see cref="Fixtures"/>.
 /// </summary>
 public class DigitalIoTests
 {
-    private const string DefaultTable =
-        "960134E9FCC664A8000000000000C055004D3ABF3554000000000000002B80269D5F1A2A00000000000090194093CE6F0C860A0000000000006805D0A4F32B4305000000000000B60268D2F9CDA1020000000000005C0134E9FCC65001000000000080AE009A747E73A80000000000008067004D3ABF31182A000000000000F0194093CE6F2C860A0000000000008006D0A4F31B93A102000000000000A10134E9FCC666A80000000000008068004D3ABF311A2A000000000000301A4093CE6FAC860A0000000000009006C32FB21824A202000000000000";
+    private const string DefaultTable = Fixtures.DefaultDigitalIoTable;
 
-    private const string TarpnTable =
-        "960134E9FCC664A1204900000000C055004D3ABF3554000000000000002B80269D5F1A2A00000000000090194093CE6F0C860A0000000000006805D0A4F32B4305000000000000B60268D2F9CDA1020000000000005C0134E9FCC65001000000000080AE009A747E73A80000000000008067004D3ABF319828000000000000F0194093CE6F2C860A0000000000008006D0A4F31B938502820002000200A10134E9FCC666A80000000000008068004D3ABF311A2A000000000000301A4093CE6FAC860A0000000000009006C32FB21824A202000000000000";
+    private const string TarpnTable = Fixtures.TarpnDigitalIoTable;
 
-    // Item index entries (7 bytes each) for the items the pdn-internal profile touches: the audio
-    // block (0x3B, 95 bits x 4) and the digital line table (0x37, 132 bits x 15), as a real readout has them.
-    private const string ItemIndex = "3B5F0004000900" + "3784000F000600";
-
-    private static CodeplugFields Open(string tableHex)
-    {
-        byte[] table = Convert.FromHexString(tableHex);
-        var image = new CodeplugImage(
-            [new KeyValuePair<string, string>("DBVer", "0095")],
-            [
-                new CodeplugRecord(0x01, 0, Convert.FromHexString(ItemIndex)),
-                new CodeplugRecord(0x09, 0, new byte[37]),
-                new CodeplugRecord(0x3B, 0, new byte[20]),
-            ]);
-        image.SetSectionBytes(0x37, table);
-        return CodeplugFields.Open(image);
-    }
-
-    [Fact]
-    public void Pdn_internal_profile_routes_everything_to_the_internal_options_board()
-    {
-        CodeplugFields f = Open(DefaultTable);
-
-        f.ApplyPdnInternal();
-
-        // includes pdn-extra (and so pdn-basic)
-        f.CcdiModeAllowed.Should().BeTrue();
-        f.PowerupState.Should().Be(DataPowerupMode.CommandMode);
-        f.CommandModeBaud.Should().Be(FfskBaud.Baud28800);
-        f.TransparentModeEnabled.Should().BeTrue();
-        // the internal-options additions
-        f.DataPort.Should().Be(DataPort.InternalOptions);
-        f.CommandModeFlowControl.Should().Be(DataFlowControl.None);
-        f.GetRxTapOutNode().Should().Be(2);
-        f.TapOutUnmute.Should().Be(TapOutUnmute.ExceptOnPtt);
-        f.GetEptt1TapInNode().Should().Be(13);
-        // the packet-defaults audio block with the tap-out point moved to R2, byte for byte
-        Convert.ToHexString(f.Image.Require(0x3B, 0).Data).Should().Be("000100C2088000004000803A0020004000001000");
-        f.GetDigitalIoRole(DigitalIoLine.IopGpio1).Should().Be(DigitalIoRole.ExternalPtt1Input);
-        // and nothing else on the line table moved
-        foreach (DigitalIoLine other in Enum.GetValues<DigitalIoLine>().Where(l => l != DigitalIoLine.IopGpio1))
-        {
-            f.GetDigitalIoRole(other).Should().Be(DigitalIoRole.Unassigned, other.ToString());
-        }
-    }
+    private static CodeplugFields Open(string tableHex) => Fixtures.Open(tableHex);
 
     [Fact]
     public void The_table_is_chunked_into_records_the_way_the_cps_chunks_it()

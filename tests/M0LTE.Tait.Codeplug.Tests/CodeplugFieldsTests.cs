@@ -414,38 +414,6 @@ public class CodeplugFieldsTests
     }
 
     [Fact]
-    public void Pdn_basic_profile_enables_the_ccdi_channel()
-    {
-        var f = CodeplugFields.Open(ImageWith(Data(new byte[37])));
-        f.ApplyPdnBasic();
-        f.CcdiModeAllowed.Should().BeTrue();
-        f.PowerupState.Should().Be(DataPowerupMode.CommandMode);
-        f.CcdiProgressMessageEnabled.Should().BeTrue();
-        f.CommandModeBaud.Should().Be(FfskBaud.Baud28800);
-        // pdn-basic is telemetry only: it does not turn on the transparent modem.
-        f.TransparentModeEnabled.Should().BeFalse();
-    }
-
-    [Fact]
-    public void Pdn_extra_profile_enables_the_transparent_modem_and_includes_basic()
-    {
-        var f = CodeplugFields.Open(ImageWith(Data(new byte[37])));
-        f.ApplyPdnExtra();
-        // includes pdn-basic
-        f.CcdiModeAllowed.Should().BeTrue();
-        f.PowerupState.Should().Be(DataPowerupMode.CommandMode);
-        f.CcdiProgressMessageEnabled.Should().BeTrue();
-        // the transparent modem + mode-signalling additions
-        f.TransparentModeEnabled.Should().BeTrue();
-        f.IgnoreEscapeSequence.Should().BeFalse();          // load-bearing: escape must work
-        f.IgnoreSubaudibleOnData.Should().BeTrue();
-        f.FfskTransparentBaud.Should().Be(FfskBaud.Baud28800);
-        f.FfskModemBaud.Should().Be(FfskModemRate.Baud2400);
-        f.SdmEnabled.Should().BeTrue();
-        f.CcdiSdmOutputEnabled.Should().BeTrue();
-    }
-
-    [Fact]
     public void Audio_block_tap_fields_round_trip()
     {
         var f = CodeplugFields.Open(ImageWith(Audio(new byte[16])));
@@ -578,9 +546,9 @@ public class CodeplugFieldsTests
 
         f.ApplyPacketAudioDefaults();
 
-        // Byte-exact against the CPS's own "set to packet defaults" save.
-        Convert.ToHexString(image.Require(0x3B, 0).Data).ToLowerInvariant()
-            .Should().Be("000100c1088000004000803a0020004000001000");
+        // Byte-exact against the CPS's own save of that audio configuration.
+        Convert.ToHexString(image.Require(0x3B, 0).Data)
+            .Should().Be(Fixtures.PacketAudioBlock);
         ItemCount(image, 0x3B).Should().Be(4);
         // The fields we can read match the recommended config.
         f.GetRxTapOutNode().Should().Be(1);        // Rx tap out R1

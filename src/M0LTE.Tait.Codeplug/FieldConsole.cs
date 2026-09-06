@@ -123,6 +123,15 @@ public static class FieldConsole
         rows.Add(("rxtapinverted", f.RxTapOutInverted ? "true" : "false"));
         rows.Add(("txtapinverted", f.Eptt1TapInInverted ? "true" : "false"));
 
+        // PTT form (record 0x19; only if present)
+        if (f.HasPttTable)
+        {
+            foreach (PttSource source in System.Enum.GetValues<PttSource>())
+            {
+                rows.Add(("ptt." + PttSourceName(source), f.GetPttTransmission(source).ToString()));
+            }
+        }
+
         // Programmable I/O, Digital tab (record 0x37; only if present)
         if (f.HasDigitalIo)
         {
@@ -267,6 +276,9 @@ public static class FieldConsole
             case var gpio when gpio.StartsWith("gpio.", StringComparison.OrdinalIgnoreCase):
                 f.SetDigitalIoRole(DigitalIoLineNamed(gpio[5..]), Enum<DigitalIoRole>(value));
                 return;
+            case var ptt when ptt.StartsWith("ptt.", StringComparison.OrdinalIgnoreCase):
+                f.SetPttTransmission(PttSourceNamed(ptt[4..]), Enum<PttTransmission>(value));
+                return;
             case "audio":
                 if (!string.Equals(value, "packet-defaults", StringComparison.OrdinalIgnoreCase))
                 {
@@ -360,6 +372,27 @@ public static class FieldConsole
         }
 
         throw new FormatException($"unknown digital I/O line '{name}' (aux_gpi1..3, aux_gpio4..7, iop_gpio1..7, ch_gpio1)");
+    }
+
+    private static string PttSourceName(PttSource source) => source switch
+    {
+        PttSource.Ptt => "ptt",
+        PttSource.ExternalPtt1 => "eptt1",
+        PttSource.ExternalPtt2 => "eptt2",
+        _ => source.ToString().ToLowerInvariant(),
+    };
+
+    private static PttSource PttSourceNamed(string name)
+    {
+        foreach (PttSource source in System.Enum.GetValues<PttSource>())
+        {
+            if (string.Equals(PttSourceName(source), name, StringComparison.OrdinalIgnoreCase))
+            {
+                return source;
+            }
+        }
+
+        throw new FormatException($"unknown PTT source '{name}' (ptt, eptt1, eptt2)");
     }
 
     private static string Int(long v) => v.ToString(CultureInfo.InvariantCulture);

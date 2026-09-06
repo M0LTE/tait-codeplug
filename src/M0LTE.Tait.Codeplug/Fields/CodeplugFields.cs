@@ -405,7 +405,7 @@ public sealed class CodeplugFields
     private static readonly byte[] PacketAudioRecord =
     {
         0x00, 0x01, 0x00, 0xC1, 0x08, 0x80, 0x00, 0x00, 0x40, 0x00,
-        0x80, 0x3A, 0x00, 0x20, 0x00, 0x40, 0x00, 0x00, 0x10, 0x00,
+        0x00, 0x3A, 0x00, 0x20, 0x00, 0x40, 0x00, 0x00, 0x10, 0x00,
     };
 
     /// <summary>
@@ -415,8 +415,21 @@ public sealed class CodeplugFields
     /// stream that carries carrier-sense (DCD) and external-PTT edges. It enables the CCDI master, keeps
     /// the radio in Command mode at power-up so it is always CCDI-reachable, turns on progress-message
     /// output (needed for DCD/PTT), and sets the command-mode baud to the Packet.NET default (28800).
-    /// It does not touch the data port (that follows the physical wiring) or the RF config, so it is safe
-    /// to layer onto a radio already configured for its channels. It changes only the data record (0x09).
+    /// <para>
+    /// It also wires the modem to the auxiliary connector, the wiring a soundcard or TNC deployment
+    /// uses: the <see cref="ApplyPacketAudioDefaults"/> audio block (Rx tap-out R1, type Split so the
+    /// speaker keeps working, unmute Except on PTT; EPTT1 tap-in T13), AUX_GPI1 as an active-low
+    /// External PTT 1 input - the line the modem's PTT keys - and External PTT 1 set to transmit
+    /// Data from the Audio Tap In rather than Voice from the aux mic, so keying that line actually
+    /// puts the modem's audio on air. It does not touch the data port (that follows the physical
+    /// wiring) or the RF config, so it is still safe to layer onto a radio already configured for its
+    /// channels. It changes the data record (0x09), the audio block (0x3B), one line of the digital
+    /// I/O table (0x37) and one entry of the PTT table (0x19).
+    /// </para>
+    /// <para>
+    /// The three I/O records it writes reproduce, byte for byte, a CPS save of that configuration on
+    /// an otherwise default TM8100 codeplug (DBVer 0095).
+    /// </para>
     /// </summary>
     public void ApplyPdnBasic()
     {
@@ -424,6 +437,9 @@ public sealed class CodeplugFields
         PowerupState = DataPowerupMode.CommandMode;
         CcdiProgressMessageEnabled = true;
         CommandModeBaud = FfskBaud.Baud28800;
+        ApplyPacketAudioDefaults();
+        SetDigitalIoRole(DigitalIoLine.AuxGpi1, DigitalIoRole.ExternalPtt1Input);
+        SetPttTransmission(PttSource.ExternalPtt1, PttTransmission.DataFromAudioTapIn);
     }
 
     /// <summary>
@@ -435,10 +451,11 @@ public sealed class CodeplugFields
     /// (load-bearing - without it the escape can never return the radio to Command mode and it wedges);
     /// ignore-subaudible on the data path (so the modem is not gated by tone squelch); the transparent
     /// terminal baud (28800) and over-air FFSK baud (2400) at the Packet.NET defaults; and SDM plus
-    /// CCDI SDM output for the mode-signalling side channel. It changes only the data record (0x09). The
-    /// over-air FFSK baud must match at both ends of the link; adjust it (and the bauds) if your
-    /// deployment differs. It configures the internal modem, not an external-TNC audio path - use the
-    /// separate <see cref="ApplyPacketAudioDefaults"/> preset for a soundcard/TNC deployment.
+    /// CCDI SDM output for the mode-signalling side channel. Its own additions are all in the data
+    /// record (0x09). The over-air FFSK baud must match at both ends of the link; adjust it (and the bauds) if your
+    /// deployment differs. Like <see cref="ApplyPdnBasic"/> it leaves the audio taps and AUX_GPI1
+    /// wired for the auxiliary connector, so the same codeplug also serves an external soundcard or TNC
+    /// on that connector.
     /// </summary>
     public void ApplyPdnExtra()
     {
@@ -464,7 +481,12 @@ public sealed class CodeplugFields
     /// muting Tait's 3DK manual specifies for an external modem; EPTT1 tap-in T13), and programs
     /// IOP_GPIO1 as an active-low External PTT 1 input, the line the board's PTT transistor pulls
     /// low. The audio block is the <see cref="ApplyPacketAudioDefaults"/> record with the tap-out
-    /// point moved to R2. RF configuration is untouched.
+    /// point moved to R2. Because the keying line moves onto the options connector it also releases
+    /// AUX_GPI1 - which <see cref="ApplyPdnBasic"/> programs as the External PTT 1 input for a modem
+    /// on the auxiliary connector - back to Unassigned, so only the board can key the radio and a
+    /// floating aux pin cannot. External PTT 1 itself stays set to transmit Data from the Audio Tap
+    /// In: that is the keying source the board's line is wired to, only the pin changes. RF
+    /// configuration is untouched.
     /// </summary>
     public void ApplyPdnInternal()
     {
@@ -473,6 +495,7 @@ public sealed class CodeplugFields
         CommandModeFlowControl = DataFlowControl.None;
         ApplyPacketAudioDefaults();
         SetRxTapOutNode(2);
+        SetDigitalIoRole(DigitalIoLine.AuxGpi1, DigitalIoRole.Unassigned);
         SetDigitalIoRole(DigitalIoLine.IopGpio1, DigitalIoRole.ExternalPtt1Input);
     }
 
@@ -1792,6 +1815,63 @@ public sealed class CodeplugFields
         return entries;
     }
 
+    // ---- PTT form (record 0x19) ---------------------------------------------------------
+    //
+    // Item 0x19 is three 31-bit entries - PTT, External PTT 1, External PTT 2 - packed LSB-first
+    // with no padding between them, so entry n starts at bit 31n. Only the transmission-type /
+    // audio-source field is mapped; the rest of each entry is left exactly as it was.
+
+    private const byte PttSection = 0x19;
+    private const int PttEntryBits = 31;
+
+    /// <summary>Offset of the transmission-type / audio-source field within a PTT entry, and its
+    /// width. The values are the two the CPS is pinned for; see <see cref="PttTransmission"/>.</summary>
+    private const int PttTransmissionBitOffset = 11;
+    private const int PttTransmissionBits = 2;
+    private const long PttTransmissionVoice = 1;              // every source in a default codeplug
+    private const long PttTransmissionDataFromAudioTapIn = 2; // External PTT 1 in the packet template
+
+    /// <summary>True when the codeplug carries the PTT table (record 0x19).</summary>
+    public bool HasPttTable => HasRecord(PttSection, 0);
+
+    /// <summary>What a PTT source transmits when it keys the radio. <see cref="PttTransmission.Other"/>
+    /// means a combination this map does not recognise; its bits are preserved untouched.</summary>
+    public PttTransmission GetPttTransmission(PttSource source) =>
+        PttBits().GetBits(PttFieldOffset(source), PttTransmissionBits) switch
+        {
+            PttTransmissionVoice => PttTransmission.Voice,
+            PttTransmissionDataFromAudioTapIn => PttTransmission.DataFromAudioTapIn,
+            _ => PttTransmission.Other,
+        };
+
+    /// <summary>Set what a PTT source transmits. Rewrites only that entry's 2-bit
+    /// transmission-type / audio-source field; every other bit of the table is left as it was.</summary>
+    /// <exception cref="ArgumentException">The value is <see cref="PttTransmission.Other"/>, which has
+    /// no bit pattern to write.</exception>
+    public void SetPttTransmission(PttSource source, PttTransmission transmission)
+    {
+        long value = transmission switch
+        {
+            PttTransmission.Voice => PttTransmissionVoice,
+            PttTransmission.DataFromAudioTapIn => PttTransmissionDataFromAudioTapIn,
+            _ => throw new ArgumentException($"{transmission} is not a combination that can be written", nameof(transmission)),
+        };
+
+        PttBits().SetBits(PttFieldOffset(source), PttTransmissionBits, value);
+    }
+
+    private ChannelBits PttBits() => new([Image.Require(PttSection, 0).Data]);
+
+    private static int PttFieldOffset(PttSource source)
+    {
+        if (!Enum.IsDefined(source))
+        {
+            throw new ArgumentOutOfRangeException(nameof(source), source, "not a PTT source");
+        }
+
+        return ((int)source * PttEntryBits) + PttTransmissionBitOffset;
+    }
+
     private byte[] Audio => Image.Require(0x3B, 0).Data;
 
     /// <summary>RX tap-out point node number (low nibble of payload byte 3). R-nodes map directly:
@@ -1810,10 +1890,15 @@ public sealed class CodeplugFields
     }
 
     /// <summary>EPTT1 tap-in point node number: payload[11] = 0x20 | (node &lt;&lt; 1). T3=3, T5=5,
-    /// T8=8, T13=13.</summary>
+    /// T8=8, T13=13. Meaningless while the tap-in point is None, which the field map cannot express;
+    /// see <see cref="SetEptt1TapInNode"/>.</summary>
     public int GetEptt1TapInNode() => (Audio[11] >> 1) & 0x0F;
 
-    /// <summary>Set the EPTT1 tap-in point node number.</summary>
+    /// <summary>Set the EPTT1 tap-in point node number. The tap-in point is not just the node: a
+    /// tap-in of None is payload[10] bit 7 set with payload[11] zero, and choosing a node clears that
+    /// bit, so this clears it too. Without that the block claims both None and a node - a state the
+    /// CPS never writes. Pinned against a CPS save of tap-in T13 on an otherwise default
+    /// codeplug.</summary>
     public void SetEptt1TapInNode(int node)
     {
         if (node is < 0 or > 0x0F)
@@ -1821,6 +1906,7 @@ public sealed class CodeplugFields
             throw new ArgumentOutOfRangeException(nameof(node), node, "0..15");
         }
 
+        Audio[10] &= 0x7F;
         Audio[11] = (byte)(0x20 | ((node & 0x0F) << 1));
     }
 
