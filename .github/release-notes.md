@@ -1,4 +1,4 @@
-Standalone Tait TM8100/TM8200 codeplug CLI - read, decode, edit and program a codeplug over the serial interface without the Windows CPS, and apply the Packet.NET (`pdn-basic` / `pdn-extra`) upgrade profiles.
+Standalone Tait TM8100/TM8200 codeplug CLI - read, decode, edit and program a codeplug over the serial interface without the Windows CPS, and apply the Packet.NET (`audio-and-ptt` / `pdn-basic` / `pdn-extra`) upgrade profiles.
 
 Each binary is **self-contained** (the .NET runtime and the native serial library are embedded) and **single-file** - no .NET install needed. Download the one for your platform and run.
 
@@ -17,6 +17,6 @@ Already have an older copy? `tait-codeplug --upgrade` pulls this release for you
 
 Run it with no arguments for the interactive editor: a port selector, the channel table (frequency, bandwidth, power), the PDN preset picker, and read/write buttons. `tait-codeplug tui <file.m8p>` opens it on a saved codeplug instead of reading a radio.
 
-Common commands: `dump <file.m8p | port>` (decode every field), `get` / `set <file.m8p> <field> <value>`, `set <file.m8p> profile pdn-basic|pdn-extra`, and the hardware verbs `version` / `read` / `patch <port> ...` (power-cycle the radio into programming mode as you trigger). The write path is version-pinned and backs up before writing; it never touches firmware.
+Common commands: `dump <file.m8p | port>` (decode every field), `get` / `set <file.m8p> <field> <value>`, `set <file.m8p> profile audio-and-ptt|pdn-basic|pdn-extra`, and the hardware verbs `version` / `read` / `patch <port> ...` (power-cycle the radio into programming mode as you trigger). The write path is version-pinned and backs up before writing; it never touches firmware.
 
 The library behind the CLI ships as [`M0LTE.Tait.Codeplug`](https://www.nuget.org/packages/M0LTE.Tait.Codeplug) at the same version.
