@@ -290,10 +290,11 @@ public static class FieldConsole
             case "profile":
                 switch (value.ToLowerInvariant())
                 {
+                    case "audio-and-ptt": f.ApplyAudioAndPtt(); return;
                     case "pdn-basic": f.ApplyPdnBasic(); return;
                     case "pdn-extra": f.ApplyPdnExtra(); return;
                     case "pdn-internal": f.ApplyPdnInternal(); return;
-                    default: throw new FormatException("supported profiles: pdn-basic, pdn-extra, pdn-internal");
+                    default: throw new FormatException("supported profiles: audio-and-ptt, pdn-basic, pdn-extra, pdn-internal");
                 }
 
             default: throw new FormatException($"unknown field '{name}'");

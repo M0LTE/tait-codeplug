@@ -21,7 +21,7 @@ namespace M0LTE.Tait.Codeplug.Cli;
 /// </summary>
 internal static class Tui
 {
-    private static readonly string[] PresetLabels = ["none", "pdn-basic", "pdn-extra", "pdn-internal"];
+    private static readonly string[] PresetLabels = ["none", "audio-and-ptt", "pdn-basic", "pdn-extra", "pdn-internal"];
 
     /// <summary>Keep the log bounded: a session left open for hours should not grow a list view for ever.</summary>
     private const int MaxLogLines = 500;
@@ -266,10 +266,11 @@ internal static class Tui
         var presetHelp = new Label
         {
             X = 1,
-            Y = 4,
+            Y = 5,
             Width = Dim.Fill(),
             Height = Dim.Fill(),
             Text = "Applied when you\nwrite. No preset\ntouches RF or channel\nconfig.\n\n"
+                + "audio-and-ptt: the\naux-connector modem\nwiring - audio taps\nand the PTT line.\n\n"
                 + "basic: CCDI control\n(RSSI, power, status,\nPTT, DCD).\n\n"
                 + "extra: adds the\nTNC-less FFSK modem\nand SDM signalling.\n\n"
                 + "internal: extra, on\nthe internal options\nboard: data port,\naudio taps, PTT line.",
@@ -498,17 +499,12 @@ internal static class Tui
         RunOffThread(
             () =>
             {
-                if (presetIndex == 1)
+                switch (presetIndex)
                 {
-                    fields.ApplyPdnBasic();
-                }
-                else if (presetIndex == 2)
-                {
-                    fields.ApplyPdnExtra();
-                }
-                else if (presetIndex == 3)
-                {
-                    fields.ApplyPdnInternal();
+                    case 1: fields.ApplyAudioAndPtt(); break;
+                    case 2: fields.ApplyPdnBasic(); break;
+                    case 3: fields.ApplyPdnExtra(); break;
+                    case 4: fields.ApplyPdnInternal(); break;
                 }
 
                 string backup = $"tait-codeplug-backup-{DateTime.UtcNow:yyyyMMddHHmmss}.m8p";

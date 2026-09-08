@@ -43,12 +43,13 @@ Run it with no arguments and you get a screen instead of a verb: pick a port, re
 │╰────────────────────────────────────────────────────────────────────────────────────────╯│
 │╭┤Channels - Enter or F3 to edit├────────────────────────────╮╭┤PDN preset├──────────────╮│
 ││ #   RX (MHz)      TX (MHz)      Bandwidth  Power           ││ ◉ none                   ││
-││ 0   144.812500    (= RX)        Narrow     High            ││ ○ pdn-basic              ││
+││ 0   144.812500    (= RX)        Narrow     High            ││ ○ audio-and-ptt          ││
+││                                                            ││ ○ pdn-basic              ││
 ││                                                            ││ ○ pdn-extra              ││
-││ ○ pdn-internal           ││
+││                                                            ││ ○ pdn-internal           ││
 ││                                                            ││                          ││
 ││                                                            ││ Applied when you         ││
-││                                                            ││ write. Neither preset    ││
+││                                                            ││ write. No preset         ││
 ││                                                            ││ touches RF or channel    ││
 ││                                                            ││ config.                  ││
 │╰────────────────────────────────────────────────────────────╯╰──────────────────────────╯│
@@ -104,13 +105,13 @@ tait-codeplug parse   <file.m8p | port>            verify checksums + print the 
 tait-codeplug dump    <file.m8p | port>            decode every mapped field
 tait-codeplug get     <file.m8p | port> [field]    read one field, or all as name=value
 tait-codeplug set     <file.m8p> <field> <value>   set one field and save (e.g. ch0.bandwidth Wide)
-tait-codeplug set     <file.m8p> profile <name>    apply a PDN upgrade profile to a file
+tait-codeplug set     <file.m8p> profile <name>    apply an upgrade profile to a file
 
 # hardware (radio latched into programming mode on <port>: power-cycle it as you trigger)
 tait-codeplug version <port>                       interrogate: model / firmware / serial
 tait-codeplug read    <port> [out.m8p]             read the codeplug (to a file, or stdout if omitted)
 tait-codeplug patch   <port> <field> <value>       live-set one field (backs up first)
-tait-codeplug patch   <port> profile <name>        live-apply a PDN upgrade profile
+tait-codeplug patch   <port> profile <name>        live-apply an upgrade profile
 tait-codeplug channel add    <file.m8p>            append a channel (a copy of the last one)
 tait-codeplug channel delete <file.m8p> <n>       remove channel n, shifting the rest down
 tait-codeplug tui     [file.m8p]                  interactive mode, optionally on a saved codeplug
@@ -122,28 +123,34 @@ tait-codeplug --upgrade                           replace this binary with the l
 The radio must be latched into programming mode: power-cycle it as the command connects. Progress and
 prompts go to stderr, so `read <port> > radio.m8p` gives you a clean `.m8p` on stdout.
 
-## PDN upgrade profiles
+## Upgrade profiles
 
-`pdn-basic`, `pdn-extra` and `pdn-internal` upgrade a radio to the [Packet.NET](https://github.com/packet-net/packet.net)
+`audio-and-ptt`, `pdn-basic`, `pdn-extra` and `pdn-internal` upgrade a radio to the [Packet.NET](https://github.com/packet-net/packet.net)
 feature set - CCDI telemetry and control, and the TNC-less internal FFSK packet modem plus SDM mode
 signalling - **without touching RF config** (channels, frequencies, power), so they layer safely onto a
 radio already provisioned for its environment. See the
-[library README](src/M0LTE.Tait.Codeplug/README.md#pdn-upgrade-profiles) for exactly what each one sets.
+[library README](src/M0LTE.Tait.Codeplug/README.md#upgrade-profiles) for exactly what each one sets.
 
-All three also wire the modem's audio and PTT, which no profile used to do. `pdn-basic` and `pdn-extra`
-wire the **auxiliary connector**, for a soundcard interface or TNC: Rx tap-out R1, type Split, unmuted
-except on PTT; EPTT1 tap-in T13; AUX_GPI1 as an active-low External PTT 1 input; and External PTT 1
-transmitting Data from the Audio Tap In instead of Voice from the aux mic. Those three records come out
-byte-identical to a CPS save of the same configuration on a default TM8100 codeplug. The PTT sources are
-settable on their own too: `set radio.m8p ptt.eptt1 DataFromAudioTapIn` (or `Voice`); `get radio.m8p |
-grep ptt.` lists all three.
+`audio-and-ptt` is the modem wiring on its own, for the **auxiliary connector** - a soundcard interface
+or TNC: Rx tap-out R1, type Split, unmuted except on PTT; EPTT1 tap-in T13; AUX_GPI1 as an active-low
+External PTT 1 input; and External PTT 1 transmitting Data from the Audio Tap In instead of Voice from
+the aux mic. Those three records come out byte-identical to a CPS save of the same configuration on a
+default TM8100 codeplug. The PTT sources are settable on their own too: `set radio.m8p ptt.eptt1
+DataFromAudioTapIn` (or `Voice`); `get radio.m8p | grep ptt.` lists all three.
 
-`pdn-internal` is the one for a radio with a Packet.NET internal options board fitted: `pdn-extra` plus
-the data port on Internal Options, the tap-out moved to R2 for a sound-card modem, and IOP_GPIO1
-programmed as an active-low External PTT 1 input for the board's PTT line. It releases AUX_GPI1 again,
-so only the board can key the radio. Every PTT line is settable on its own: `set radio.m8p
-gpio.iop_gpio1 ExternalPtt1Input` (or `Unassigned`, or `BusyStatusOutput` on a line that can be an
-output); `get radio.m8p | grep gpio` lists every line.
+`pdn-basic` and `pdn-extra` are the data path, and nothing else: CCDI on, the radio in Command mode at
+power-up, progress messages on and the command baud at 28800; `pdn-extra` adds the transparent FFSK
+modem and SDM signalling on top. They leave the audio taps, AUX_GPI1 and the PTT table alone, so a
+radio wired for the aux connector wants one of them **and** `audio-and-ptt`, while a radio whose audio
+and PTT are already set up (or set up differently) takes the `pdn-*` profile on its own.
+
+`pdn-internal` is the one for a radio with a Packet.NET internal options board fitted, and carries its
+own audio and keying because they differ: `pdn-extra` plus the data port on Internal Options, the
+tap-out moved to R2 for a sound-card modem, External PTT 1 transmitting data from the audio tap in, and
+IOP_GPIO1 programmed as an active-low External PTT 1 input for the board's PTT line. It releases
+AUX_GPI1 again, so only the board can key the radio. Every PTT line is settable on its own: `set
+radio.m8p gpio.iop_gpio1 ExternalPtt1Input` (or `Unassigned`, or `BusyStatusOutput` on a line that can
+be an output); `get radio.m8p | grep gpio` lists every line.
 
 ## Safety
 
