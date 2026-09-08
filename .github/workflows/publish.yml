@@ -149,11 +149,14 @@ jobs:
 
           if [ ! -s release/CHANGES.md ]; then
             echo "::warning::CHANGELOG.md has no section for ${VERSION}; using commit subjects instead."
-            previous=$(git describe --tags --abbrev=0 "v${VERSION}^" 2>/dev/null || true)
+            # HEAD, not v${VERSION}: on a workflow_dispatch run the tag does not exist yet - the
+            # `gh release create` below is what creates it - so naming it here exits 128 and takes
+            # the whole release step with it, after the nuget push has already happened.
+            previous=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
             if [ -n "${previous}" ]; then
-              git log --format='- %s' "${previous}..v${VERSION}" > release/CHANGES.md
+              git log --format='- %s' "${previous}..HEAD" > release/CHANGES.md
             else
-              git log --format='- %s' -20 "v${VERSION}" > release/CHANGES.md
+              git log --format='- %s' -20 HEAD > release/CHANGES.md
             fi
           fi
 

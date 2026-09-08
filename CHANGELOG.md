@@ -4,10 +4,18 @@ What changed in each release. The section for a version is lifted into that vers
 
 Newest first. Add a section before tagging.
 
-## 0.10.0 - 2026-09-08
+## 0.10.1 - 2026-09-08
 
 - **An `audio-and-ptt` profile**: the modem's audio and PTT wiring on its own, for a radio that needs that and nothing else - one whose data settings are already right, or one being set up for an external modem without the CCDI side. It is the aux-connector wiring 0.9.0 added to `pdn-basic`, unchanged and unmoved: the `audio packet-defaults` block (Rx tap-out **R1**, type Split, unmute **Except on PTT**; EPTT1 tap-in **T13**), **AUX_GPI1 as an active-low External PTT 1 input**, and **External PTT 1 transmitting Data from the Audio Tap In**, and it still reproduces a CPS save of that configuration byte for byte in records 0x19, 0x37 and 0x3B. It never touches the data record. `set <file.m8p> profile audio-and-ptt` / `patch <port> profile audio-and-ptt`, and a preset in interactive mode above the three PDN ones.
 - **`pdn-basic`, `pdn-extra` and `pdn-internal` are unchanged** - byte for byte, on every codeplug. `pdn-basic` still applies that wiring itself, so the profiles nest: `audio-and-ptt` < `pdn-basic` < `pdn-extra`, and `pdn-internal` is `pdn-extra` moved onto the internal options connector. Apply the one that describes the radio and it carries the rest; nothing that worked in 0.9.0 needs a second profile now.
+- **Fixes 0.10.0**, which shipped the same `audio-and-ptt` profile but *removed* the wiring from `pdn-basic` and `pdn-extra` (see below) - a break from 0.9.0 that was never meant to ship. If you are on 0.10.0, upgrade: on 0.10.1 those two profiles behave exactly as they did on 0.9.0 again.
+
+## 0.10.0 - 2026-09-08
+
+**Superseded by 0.10.1 within the hour - do not use.** It made `pdn-basic` and `pdn-extra` stop wiring the modem's audio and PTT, a break from 0.9.0 that was never meant to ship. 0.10.1 restores them and keeps the new `audio-and-ptt` profile.
+
+- **The modem's audio and PTT wiring is its own profile, `audio-and-ptt`, and no longer part of `pdn-basic` and `pdn-extra`.** 0.9.0 folded the aux-connector wiring into those two, which left no way to take the CCDI and FFSK settings without also having the Programmable I/O and PTT forms rewritten - unhelpful on a radio whose audio and keying are already wired, or wired somewhere other than the auxiliary connector. The wiring is unchanged and still comes out byte-identical to a CPS save of it (records 0x19, 0x37 and 0x3B on a default TM8100 codeplug); it has simply moved: `audio-and-ptt` applies the `audio packet-defaults` block (Rx tap-out **R1**, type Split, unmute **Except on PTT**; EPTT1 tap-in **T13**), programs **AUX_GPI1 as an active-low External PTT 1 input** and sets **External PTT 1 to transmit Data from the Audio Tap In**, and nothing else. `pdn-basic` and `pdn-extra` are back to the data record (0x09) alone. For a soundcard interface or TNC on the aux connector, apply both - `set radio.m8p profile audio-and-ptt` then `set radio.m8p profile pdn-extra`, or the matching pair of `patch` calls; in interactive mode the preset list now offers `audio-and-ptt` above the three PDN presets. **If you were relying on 0.9.0's `pdn-basic` or `pdn-extra` to wire the audio and PTT, you now need the extra profile.**
+- **`pdn-internal` is unchanged**, and now carries the External PTT 1 transmission setting itself rather than inheriting it, since its audio and keying differ from the aux-connector set: data port Internal Options, tap-out R2, External PTT 1 transmitting Data from the Audio Tap In, IOP_GPIO1 as the active-low External PTT 1 input, and AUX_GPI1 released to Unassigned so a codeplug that has been through `audio-and-ptt` ends up keyable only by the board.
 
 ## 0.9.0 - 2026-09-06
 
