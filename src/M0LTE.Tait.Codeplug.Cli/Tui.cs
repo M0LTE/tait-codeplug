@@ -270,8 +270,8 @@ internal static class Tui
             Width = Dim.Fill(),
             Height = Dim.Fill(),
             Text = "Applied when you\nwrite. No preset\ntouches RF or channel\nconfig.\n\n"
-                + "audio-and-ptt: the\naux-connector modem\nwiring - audio taps\nand the PTT line.\n\n"
-                + "basic: CCDI control\n(RSSI, power, status,\nPTT, DCD).\n\n"
+                + "audio-and-ptt: just\nthe aux-connector\nmodem wiring - audio\ntaps and PTT line.\n\n"
+                + "basic: that, plus\nCCDI control (RSSI,\npower, status, PTT,\nDCD).\n\n"
                 + "extra: adds the\nTNC-less FFSK modem\nand SDM signalling.\n\n"
                 + "internal: extra, on\nthe internal options\nboard: data port,\naudio taps, PTT line.",
         };

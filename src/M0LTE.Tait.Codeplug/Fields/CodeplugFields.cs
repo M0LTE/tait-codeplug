@@ -417,12 +417,12 @@ public sealed class CodeplugFields
     /// Data from the Audio Tap In rather than Voice from the aux mic, so keying that line actually
     /// puts the modem's audio on air.
     /// <para>
-    /// It is the audio and keying half of a packet upgrade, split out from <see cref="ApplyPdnBasic"/>
-    /// so a radio whose audio and PTT are already wired (or wired differently) can take the CCDI and
-    /// modem settings without having its I/O forms rewritten. It touches neither the data record nor
-    /// the RF config: it changes the audio block (0x3B), one line of the digital I/O table (0x37) and
-    /// one entry of the PTT table (0x19), and those three records reproduce, byte for byte, a CPS save
-    /// of that configuration on an otherwise default TM8100 codeplug (DBVer 0095).
+    /// <see cref="ApplyPdnBasic"/> applies it as part of a full packet upgrade; it is exposed on its
+    /// own for a radio that needs the wiring and nothing else - one already running the data settings,
+    /// or one being set up for an external modem without the CCDI side. It touches neither the data
+    /// record nor the RF config: it changes the audio block (0x3B), one line of the digital I/O table
+    /// (0x37) and one entry of the PTT table (0x19), and those three records reproduce, byte for byte,
+    /// a CPS save of that configuration on an otherwise default TM8100 codeplug (DBVer 0095).
     /// </para>
     /// </summary>
     public void ApplyAudioAndPtt()
@@ -440,10 +440,12 @@ public sealed class CodeplugFields
     /// the radio in Command mode at power-up so it is always CCDI-reachable, turns on progress-message
     /// output (needed for DCD/PTT), and sets the command-mode baud to the Packet.NET default (28800).
     /// <para>
-    /// It is the data path only: everything it writes is in the data record (0x09). It does not wire the
-    /// modem's audio or keying - that is <see cref="ApplyAudioAndPtt"/>, applied alongside this one for a
-    /// modem on the auxiliary connector - and it does not touch the data port (that follows the physical
-    /// wiring) or the RF config, so it is safe to layer onto a radio already configured for its channels.
+    /// It also applies <see cref="ApplyAudioAndPtt"/>, wiring the modem to the auxiliary connector the
+    /// way a soundcard or TNC deployment needs: the packet audio block, AUX_GPI1 as the External PTT 1
+    /// input, and External PTT 1 transmitting data from the audio tap in. It does not touch the data
+    /// port (that follows the physical wiring) or the RF config, so it is still safe to layer onto a
+    /// radio already configured for its channels. It changes the data record (0x09), the audio block
+    /// (0x3B), one line of the digital I/O table (0x37) and one entry of the PTT table (0x19).
     /// </para>
     /// </summary>
     public void ApplyPdnBasic()
@@ -452,6 +454,7 @@ public sealed class CodeplugFields
         PowerupState = DataPowerupMode.CommandMode;
         CcdiProgressMessageEnabled = true;
         CommandModeBaud = FfskBaud.Baud28800;
+        ApplyAudioAndPtt();
     }
 
     /// <summary>
@@ -463,11 +466,11 @@ public sealed class CodeplugFields
     /// (load-bearing - without it the escape can never return the radio to Command mode and it wedges);
     /// ignore-subaudible on the data path (so the modem is not gated by tone squelch); the transparent
     /// terminal baud (28800) and over-air FFSK baud (2400) at the Packet.NET defaults; and SDM plus
-    /// CCDI SDM output for the mode-signalling side channel. Everything it and <see cref="ApplyPdnBasic"/>
-    /// write is in the data record (0x09). The over-air FFSK baud must match at both ends of the link;
-    /// adjust it (and the bauds) if your deployment differs. Like <see cref="ApplyPdnBasic"/> it leaves
-    /// the audio taps, AUX_GPI1 and the PTT table alone: apply <see cref="ApplyAudioAndPtt"/> alongside
-    /// it for an external soundcard or TNC on the auxiliary connector.
+    /// CCDI SDM output for the mode-signalling side channel. Its own additions are all in the data
+    /// record (0x09). The over-air FFSK baud must match at both ends of the link; adjust it (and the
+    /// bauds) if your deployment differs. Like <see cref="ApplyPdnBasic"/> it leaves the audio taps and
+    /// AUX_GPI1 wired for the auxiliary connector, so the same codeplug also serves an external
+    /// soundcard or TNC on that connector.
     /// </summary>
     public void ApplyPdnExtra()
     {
@@ -493,12 +496,12 @@ public sealed class CodeplugFields
     /// muting Tait's 3DK manual specifies for an external modem; EPTT1 tap-in T13), and programs
     /// IOP_GPIO1 as an active-low External PTT 1 input, the line the board's PTT transistor pulls
     /// low. The audio block is the <see cref="ApplyPacketAudioDefaults"/> record with the tap-out
-    /// point moved to R2. External PTT 1 is set to transmit Data from the Audio Tap In rather than
-    /// Voice, since that is the keying source the board's line is wired to. Because the keying line
-    /// lives on the options connector it also releases AUX_GPI1 - the External PTT 1 input
-    /// <see cref="ApplyAudioAndPtt"/> programs for a modem on the auxiliary connector - back to
-    /// Unassigned, so a codeplug that has been through that profile ends up keyable only by the board
-    /// and not by a floating aux pin. RF configuration is untouched.
+    /// point moved to R2. Because the keying line moves onto the options connector it also releases
+    /// AUX_GPI1 - which <see cref="ApplyAudioAndPtt"/>, and so <see cref="ApplyPdnBasic"/>, programs as
+    /// the External PTT 1 input for a modem on the auxiliary connector - back to Unassigned, so only
+    /// the board can key the radio and a floating aux pin cannot. External PTT 1 itself stays set to
+    /// transmit Data from the Audio Tap In: that is the keying source the board's line is wired to,
+    /// only the pin changes. RF configuration is untouched.
     /// </summary>
     public void ApplyPdnInternal()
     {
@@ -507,7 +510,6 @@ public sealed class CodeplugFields
         CommandModeFlowControl = DataFlowControl.None;
         ApplyPacketAudioDefaults();
         SetRxTapOutNode(2);
-        SetPttTransmission(PttSource.ExternalPtt1, PttTransmission.DataFromAudioTapIn);
         SetDigitalIoRole(DigitalIoLine.AuxGpi1, DigitalIoRole.Unassigned);
         SetDigitalIoRole(DigitalIoLine.IopGpio1, DigitalIoRole.ExternalPtt1Input);
     }

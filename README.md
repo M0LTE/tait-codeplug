@@ -131,26 +131,27 @@ signalling - **without touching RF config** (channels, frequencies, power), so t
 radio already provisioned for its environment. See the
 [library README](src/M0LTE.Tait.Codeplug/README.md#upgrade-profiles) for exactly what each one sets.
 
-`audio-and-ptt` is the modem wiring on its own, for the **auxiliary connector** - a soundcard interface
-or TNC: Rx tap-out R1, type Split, unmuted except on PTT; EPTT1 tap-in T13; AUX_GPI1 as an active-low
-External PTT 1 input; and External PTT 1 transmitting Data from the Audio Tap In instead of Voice from
-the aux mic. Those three records come out byte-identical to a CPS save of the same configuration on a
-default TM8100 codeplug. The PTT sources are settable on their own too: `set radio.m8p ptt.eptt1
+They nest, so apply the one profile that describes the radio and it carries the rest.
+
+`audio-and-ptt` is the modem wiring for the **auxiliary connector** - a soundcard interface or TNC: Rx
+tap-out R1, type Split, unmuted except on PTT; EPTT1 tap-in T13; AUX_GPI1 as an active-low External PTT
+1 input; and External PTT 1 transmitting Data from the Audio Tap In instead of Voice from the aux mic.
+Those three records come out byte-identical to a CPS save of the same configuration on a default TM8100
+codeplug. `pdn-basic` and `pdn-extra` both include it, so this one is for a radio that needs the wiring
+and nothing else - one whose data settings are already right, or one being set up for an external modem
+without the CCDI side. The PTT sources are settable individually too: `set radio.m8p ptt.eptt1
 DataFromAudioTapIn` (or `Voice`); `get radio.m8p | grep ptt.` lists all three.
 
-`pdn-basic` and `pdn-extra` are the data path, and nothing else: CCDI on, the radio in Command mode at
-power-up, progress messages on and the command baud at 28800; `pdn-extra` adds the transparent FFSK
-modem and SDM signalling on top. They leave the audio taps, AUX_GPI1 and the PTT table alone, so a
-radio wired for the aux connector wants one of them **and** `audio-and-ptt`, while a radio whose audio
-and PTT are already set up (or set up differently) takes the `pdn-*` profile on its own.
+`pdn-basic` adds the CCDI command channel on top of that wiring - CCDI on, the radio in Command mode at
+power-up, progress messages on, the command baud at 28800 - and `pdn-extra` adds the transparent FFSK
+modem and SDM signalling on top of that.
 
-`pdn-internal` is the one for a radio with a Packet.NET internal options board fitted, and carries its
-own audio and keying because they differ: `pdn-extra` plus the data port on Internal Options, the
-tap-out moved to R2 for a sound-card modem, External PTT 1 transmitting data from the audio tap in, and
-IOP_GPIO1 programmed as an active-low External PTT 1 input for the board's PTT line. It releases
-AUX_GPI1 again, so only the board can key the radio. Every PTT line is settable on its own: `set
-radio.m8p gpio.iop_gpio1 ExternalPtt1Input` (or `Unassigned`, or `BusyStatusOutput` on a line that can
-be an output); `get radio.m8p | grep gpio` lists every line.
+`pdn-internal` is the one for a radio with a Packet.NET internal options board fitted: `pdn-extra` plus
+the data port on Internal Options, the tap-out moved to R2 for a sound-card modem, and IOP_GPIO1
+programmed as an active-low External PTT 1 input for the board's PTT line. It releases AUX_GPI1 again,
+so only the board can key the radio. Every PTT line is settable on its own: `set radio.m8p
+gpio.iop_gpio1 ExternalPtt1Input` (or `Unassigned`, or `BusyStatusOutput` on a line that can be an
+output); `get radio.m8p | grep gpio` lists every line.
 
 ## Safety
 

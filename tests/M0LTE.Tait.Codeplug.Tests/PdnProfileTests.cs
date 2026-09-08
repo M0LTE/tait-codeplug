@@ -24,14 +24,14 @@ public class PdnProfileTests
         f.ApplyAudioAndPtt();
 
         AudioAndPttAreWiredForTheAuxConnector(f);
-        // it is the I/O forms only: the data path is left exactly as it was found.
+        // on its own it is the I/O forms only: the data path is left exactly as it was found.
         f.CcdiModeAllowed.Should().BeFalse();
         f.CcdiProgressMessageEnabled.Should().BeFalse();
         f.TransparentModeEnabled.Should().BeFalse();
     }
 
     [Fact]
-    public void Pdn_basic_profile_enables_the_ccdi_channel_and_leaves_the_io_forms_alone()
+    public void Pdn_basic_profile_enables_the_ccdi_channel_and_wires_the_aux_connector()
     {
         CodeplugFields f = Fixtures.Open(Fixtures.DefaultDigitalIoTable);
 
@@ -43,8 +43,8 @@ public class PdnProfileTests
         f.CommandModeBaud.Should().Be(FfskBaud.Baud28800);
         // pdn-basic is telemetry only: it does not turn on the transparent modem.
         f.TransparentModeEnabled.Should().BeFalse();
-        // the modem wiring is audio-and-ptt's job, not this one's.
-        AudioAndPttAreUntouched(f);
+        // it carries audio-and-ptt: packet audio taps and AUX_GPI1 as the external PTT input.
+        AudioAndPttAreWiredForTheAuxConnector(f);
     }
 
     [Fact]
@@ -58,7 +58,7 @@ public class PdnProfileTests
         f.CcdiModeAllowed.Should().BeTrue();
         f.PowerupState.Should().Be(DataPowerupMode.CommandMode);
         f.CcdiProgressMessageEnabled.Should().BeTrue();
-        AudioAndPttAreUntouched(f);
+        AudioAndPttAreWiredForTheAuxConnector(f);
         // the transparent modem + mode-signalling additions
         f.TransparentModeEnabled.Should().BeTrue();
         f.IgnoreEscapeSequence.Should().BeFalse();          // load-bearing: escape must work
@@ -90,7 +90,7 @@ public class PdnProfileTests
         // the packet-defaults audio block with the tap-out point moved to R2, byte for byte
         Convert.ToHexString(f.Image.Require(0x3B, 0).Data).Should().Be(PacketAudioBlockR2);
         // the keying line lives on the options connector and nowhere else: the AUX_GPI1 input
-        // audio-and-ptt programs is released, so a floating aux pin cannot key the radio.
+        // audio-and-ptt (and so pdn-basic) programs is released, so a floating aux pin cannot key it.
         f.GetDigitalIoRole(DigitalIoLine.IopGpio1).Should().Be(DigitalIoRole.ExternalPtt1Input);
         foreach (DigitalIoLine other in Enum.GetValues<DigitalIoLine>().Where(l => l != DigitalIoLine.IopGpio1))
         {
@@ -107,20 +107,24 @@ public class PdnProfileTests
     }
 
     /// <summary>
-    /// The one that matters: applying the profile to the factory-default Programmable I/O records
-    /// must produce the CPS's own bytes for that configuration, in all three records it writes. The
-    /// two codeplugs the pair comes from differ in exactly these three records and nothing else.
+    /// The one that matters: applying the wiring to the factory-default Programmable I/O records must
+    /// produce the CPS's own bytes for that configuration, in all three records it writes - whether it
+    /// is applied on its own or as the part of <c>pdn-basic</c> that carries it. The two codeplugs the
+    /// pair comes from differ in exactly these three records and nothing else.
     /// </summary>
     [Fact]
-    public void Audio_and_ptt_reproduces_the_cps_save_of_the_aux_connector_wiring_byte_for_byte()
+    public void The_aux_connector_wiring_reproduces_the_cps_save_byte_for_byte()
     {
-        CodeplugFields f = Fixtures.Open(Fixtures.DefaultDigitalIoTable);
+        foreach (Action<CodeplugFields> profile in new Action<CodeplugFields>[] { f => f.ApplyAudioAndPtt(), f => f.ApplyPdnBasic() })
+        {
+            CodeplugFields f = Fixtures.Open(Fixtures.DefaultDigitalIoTable);
 
-        f.ApplyAudioAndPtt();
+            profile(f);
 
-        Convert.ToHexString(f.Image.Require(0x19, 0).Data).Should().Be(Fixtures.PacketPttTable);
-        Convert.ToHexString(f.Image.Require(0x3B, 0).Data).Should().Be(Fixtures.PacketAudioBlock);
-        Convert.ToHexString(f.Image.SectionBytes(0x37)).Should().Be(Fixtures.PacketDigitalIoTable);
+            Convert.ToHexString(f.Image.Require(0x19, 0).Data).Should().Be(Fixtures.PacketPttTable);
+            Convert.ToHexString(f.Image.Require(0x3B, 0).Data).Should().Be(Fixtures.PacketAudioBlock);
+            Convert.ToHexString(f.Image.SectionBytes(0x37)).Should().Be(Fixtures.PacketDigitalIoTable);
+        }
     }
 
     [Fact]
@@ -185,7 +189,6 @@ public class PdnProfileTests
         // disturb them - only the one line it programs.
         CodeplugFields f = Fixtures.Open(Fixtures.TarpnDigitalIoTable);
 
-        f.ApplyAudioAndPtt();
         f.ApplyPdnExtra();
 
         f.GetDigitalIoRole(DigitalIoLine.AuxGpi1).Should().Be(DigitalIoRole.ExternalPtt1Input);
@@ -205,12 +208,4 @@ public class PdnProfileTests
         f.GetPttTransmission(PttSource.ExternalPtt1).Should().Be(PttTransmission.DataFromAudioTapIn);
     }
 
-    /// <summary>The inverse: the records <c>audio-and-ptt</c> owns are exactly as a default codeplug has them.</summary>
-    private static void AudioAndPttAreUntouched(CodeplugFields f)
-    {
-        f.GetRxTapOutNode().Should().Be(0);                 // Rx tap out None, the CPS default
-        f.TapOutUnmute.Should().Be(TapOutUnmute.OnPtt);
-        f.GetDigitalIoRole(DigitalIoLine.AuxGpi1).Should().Be(DigitalIoRole.Unassigned);
-        Convert.ToHexString(f.Image.Require(0x19, 0).Data).Should().Be(Fixtures.DefaultPttTable);
-    }
 }
