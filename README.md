@@ -143,11 +143,12 @@ without the CCDI side. The PTT sources are settable individually too: `set radio
 DataFromAudioTapIn` (or `Voice`); `get radio.m8p | grep ptt.` lists all three.
 
 `pdn-basic` adds the CCDI command channel on top of that wiring - CCDI on, the radio in Command mode at
-power-up, progress messages on, the command baud at 28800 - and `pdn-extra` adds the transparent FFSK
-modem and SDM signalling on top of that.
+power-up, progress messages on, the command baud at 28800, and the data port on Mic, the front-panel
+connector the host's serial lead plugs into - and `pdn-extra` adds the transparent FFSK modem and SDM
+signalling on top of that.
 
-`pdn-internal` is the one for a radio with a Packet.NET internal options board fitted: `pdn-extra` plus
-the data port on Internal Options, the tap-out moved to R2 for a sound-card modem, and IOP_GPIO1
+`pdn-internal` is the one for a radio with a Packet.NET internal options board fitted: `pdn-extra` with
+the data port moved to Internal Options, the tap-out moved to R2 for a sound-card modem, and IOP_GPIO1
 programmed as an active-low External PTT 1 input for the board's PTT line. It releases AUX_GPI1 again,
 so only the board can key the radio. Every PTT line is settable on its own: `set radio.m8p
 gpio.iop_gpio1 ExternalPtt1Input` (or `Unassigned`, or `BusyStatusOutput` on a line that can be an

@@ -4,6 +4,11 @@ What changed in each release. The section for a version is lifted into that vers
 
 Newest first. Add a section before tagging.
 
+## 0.11.0 - 2026-09-09
+
+- **`pdn-basic` now sets the data port to Mic**, which it never did. The profile turned the CCDI command channel on and then left the data port wherever the codeplug happened to have it, so on a radio whose port was set to Aux or Internal Options the channel came out of a connector with nothing plugged into it and `Packet.Radio.Tait` saw a silent radio - the one setting still needing a CPS pass on an otherwise complete profile. Mic is the front-panel connector the host's serial lead plugs into, and the right answer for any radio without an options board. `pdn-extra` inherits it. **`pdn-internal` is unchanged**: it sets Internal Options after `pdn-basic` has run, so the board's port still wins.
+- **`audio-and-ptt` is unchanged** and still never touches the data record. It is the wiring on its own, for a radio whose data settings are already right - forcing the data port there would defeat the point.
+
 ## 0.10.1 - 2026-09-08
 
 - **An `audio-and-ptt` profile**: the modem's audio and PTT wiring on its own, for a radio that needs that and nothing else - one whose data settings are already right, or one being set up for an external modem without the CCDI side. It is the aux-connector wiring 0.9.0 added to `pdn-basic`, unchanged and unmoved: the `audio packet-defaults` block (Rx tap-out **R1**, type Split, unmute **Except on PTT**; EPTT1 tap-in **T13**), **AUX_GPI1 as an active-low External PTT 1 input**, and **External PTT 1 transmitting Data from the Audio Tap In**, and it still reproduces a CPS save of that configuration byte for byte in records 0x19, 0x37 and 0x3B. It never touches the data record. `set <file.m8p> profile audio-and-ptt` / `patch <port> profile audio-and-ptt`, and a preset in interactive mode above the three PDN ones.

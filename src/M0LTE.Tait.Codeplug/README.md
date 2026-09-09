@@ -79,17 +79,19 @@ settings are already right, or one being set up for an external modem without th
   telemetry and control: averaged/instantaneous RSSI, forward/reverse power, PA temperature,
   status/identity, transmitter keying, and the PROGRESS stream for carrier-sense (DCD) and external-PTT
   edges. It sets CCDI-mode-allowed on, power-up state to Command (so the radio is always
-  CCDI-reachable), progress messages on, and the command baud to 28800.
+  CCDI-reachable), progress messages on, the command baud to 28800, and the **data port to Mic** - the
+  front-panel connector the host's serial lead plugs into, and so where the CCDI channel it has just
+  turned on comes out on a radio with no options board.
 - **`pdn-extra`** includes `pdn-basic` and adds the TNC-less internal FFSK packet modem plus the SDM
   side channel used for mode signalling: transparent mode on, **ignore-escape-sequence off** (so the
   transport can escape back to command mode - without this the radio wedges), ignore-subaudible on the
   data path, the transparent terminal baud (28800) and over-air FFSK baud (2400), and SDM + CCDI SDM
-  output. The over-air baud must match at both ends; adjust the bauds and the data port for your setup.
+  output. The over-air baud must match at both ends; adjust the bauds for your setup.
   Like `pdn-basic` it leaves the audio taps and AUX_GPI1 wired for the auxiliary connector, so the same
   codeplug also serves an external soundcard or TNC on that connector.
 - **`pdn-internal`** is `pdn-extra` for a radio carrying a Packet.NET internal options board (a USB
-  sound-card plus serial interface on the internal options connector). On top of `pdn-extra` it sets the
-  data port to Internal Options with no flow control, routes the audio for a sound-card modem (Rx
+  sound-card plus serial interface on the internal options connector). On top of `pdn-extra` it moves the
+  data port off Mic and onto Internal Options with no flow control, routes the audio for a sound-card modem (Rx
   tap-out **R2** split, flat discriminator audio, unmuted Except on PTT so the modem hears every burst
   from its first millisecond and does its own carrier detect; EPTT1 tap-in T13 - the `audio
   packet-defaults` block with the tap point moved to R2), and programs **IOP_GPIO1 as an active-low External PTT 1 input**, the

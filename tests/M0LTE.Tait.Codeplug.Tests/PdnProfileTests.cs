@@ -20,20 +20,24 @@ public class PdnProfileTests
     public void Audio_and_ptt_profile_wires_the_aux_connector_and_nothing_else()
     {
         CodeplugFields f = Fixtures.Open(Fixtures.DefaultDigitalIoTable);
+        f.DataPort = DataPort.Aux;
 
         f.ApplyAudioAndPtt();
 
         AudioAndPttAreWiredForTheAuxConnector(f);
-        // on its own it is the I/O forms only: the data path is left exactly as it was found.
+        // on its own it is the I/O forms only: the data path is left exactly as it was found - including
+        // the data port, which pdn-basic pins to Mic but this one leaves to whatever the radio has.
         f.CcdiModeAllowed.Should().BeFalse();
         f.CcdiProgressMessageEnabled.Should().BeFalse();
         f.TransparentModeEnabled.Should().BeFalse();
+        f.DataPort.Should().Be(DataPort.Aux);
     }
 
     [Fact]
     public void Pdn_basic_profile_enables_the_ccdi_channel_and_wires_the_aux_connector()
     {
         CodeplugFields f = Fixtures.Open(Fixtures.DefaultDigitalIoTable);
+        f.DataPort = DataPort.Aux;   // so "it is Mic afterwards" is the profile's doing, not the fixture's
 
         f.ApplyPdnBasic();
 
@@ -41,6 +45,8 @@ public class PdnProfileTests
         f.PowerupState.Should().Be(DataPowerupMode.CommandMode);
         f.CcdiProgressMessageEnabled.Should().BeTrue();
         f.CommandModeBaud.Should().Be(FfskBaud.Baud28800);
+        // the CCDI channel it turns on comes out of the front-panel connector.
+        f.DataPort.Should().Be(DataPort.Mic);
         // pdn-basic is telemetry only: it does not turn on the transparent modem.
         f.TransparentModeEnabled.Should().BeFalse();
         // it carries audio-and-ptt: packet audio taps and AUX_GPI1 as the external PTT input.
@@ -58,6 +64,7 @@ public class PdnProfileTests
         f.CcdiModeAllowed.Should().BeTrue();
         f.PowerupState.Should().Be(DataPowerupMode.CommandMode);
         f.CcdiProgressMessageEnabled.Should().BeTrue();
+        f.DataPort.Should().Be(DataPort.Mic);
         AudioAndPttAreWiredForTheAuxConnector(f);
         // the transparent modem + mode-signalling additions
         f.TransparentModeEnabled.Should().BeTrue();
@@ -81,7 +88,7 @@ public class PdnProfileTests
         f.PowerupState.Should().Be(DataPowerupMode.CommandMode);
         f.CommandModeBaud.Should().Be(FfskBaud.Baud28800);
         f.TransparentModeEnabled.Should().BeTrue();
-        // the internal-options additions
+        // the internal-options additions. The data port wins over the Mic pdn-basic sets.
         f.DataPort.Should().Be(DataPort.InternalOptions);
         f.CommandModeFlowControl.Should().Be(DataFlowControl.None);
         f.GetRxTapOutNode().Should().Be(2);

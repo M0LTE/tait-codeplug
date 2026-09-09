@@ -438,14 +438,17 @@ public sealed class CodeplugFields
     /// forward/reverse power, PA temperature, radio status/identity, transmitter keying, and the PROGRESS
     /// stream that carries carrier-sense (DCD) and external-PTT edges. It enables the CCDI master, keeps
     /// the radio in Command mode at power-up so it is always CCDI-reachable, turns on progress-message
-    /// output (needed for DCD/PTT), and sets the command-mode baud to the Packet.NET default (28800).
+    /// output (needed for DCD/PTT), sets the command-mode baud to the Packet.NET default (28800), and
+    /// puts the data port on <b>Mic</b> - the front-panel connector the host's serial lead plugs into,
+    /// which is where the CCDI channel this profile turns on has to come out on a radio with no options
+    /// board. (<see cref="ApplyPdnInternal"/> moves it to the options connector.)
     /// <para>
     /// It also applies <see cref="ApplyAudioAndPtt"/>, wiring the modem to the auxiliary connector the
     /// way a soundcard or TNC deployment needs: the packet audio block, AUX_GPI1 as the External PTT 1
-    /// input, and External PTT 1 transmitting data from the audio tap in. It does not touch the data
-    /// port (that follows the physical wiring) or the RF config, so it is still safe to layer onto a
-    /// radio already configured for its channels. It changes the data record (0x09), the audio block
-    /// (0x3B), one line of the digital I/O table (0x37) and one entry of the PTT table (0x19).
+    /// input, and External PTT 1 transmitting data from the audio tap in. It does not touch the RF
+    /// config, so it is still safe to layer onto a radio already configured for its channels. It changes
+    /// the data record (0x09), the audio block (0x3B), one line of the digital I/O table (0x37) and one
+    /// entry of the PTT table (0x19).
     /// </para>
     /// </summary>
     public void ApplyPdnBasic()
@@ -454,6 +457,7 @@ public sealed class CodeplugFields
         PowerupState = DataPowerupMode.CommandMode;
         CcdiProgressMessageEnabled = true;
         CommandModeBaud = FfskBaud.Baud28800;
+        DataPort = DataPort.Mic;
         ApplyAudioAndPtt();
     }
 
@@ -488,8 +492,9 @@ public sealed class CodeplugFields
     /// Upgrade the codeplug for a radio carrying a Packet.NET internal options board (a USB
     /// sound-card and serial interface on the internal options connector): everything
     /// <see cref="ApplyPdnExtra"/> does, plus the settings that route the radio's data and audio to
-    /// that connector and let the board key the transmitter. Sets the data port to Internal Options
-    /// with no flow control (the CCDI and transparent-mode serial lines are IOP_TXD / IOP_RXD),
+    /// that connector and let the board key the transmitter. Moves the data port off the Mic connector
+    /// <see cref="ApplyPdnBasic"/> puts it on and onto Internal Options, with no flow control (the CCDI
+    /// and transparent-mode serial lines are then IOP_TXD / IOP_RXD),
     /// routes the audio for a sound-card modem (Rx tap-out <b>R2</b>, flat discriminator audio ahead
     /// of de-emphasis and filtering, type Split so the speaker keeps working, unmuted Except on PTT so
     /// the modem hears every burst from its first millisecond and does its own carrier detect - the
