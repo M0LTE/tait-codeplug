@@ -203,6 +203,166 @@ public class PdnProfileTests
         f.GetDigitalIoRole(DigitalIoLine.IopGpio4).Should().Be(DigitalIoRole.Other); // preserved untouched
     }
 
+    /// <summary>
+    /// The key edit's counterpart to the wiring test: programming F1 to Squelch Override on the
+    /// factory-default Key Settings records must produce the CPS's own bytes, in all three items it
+    /// writes - the key table, the function table and the programmed-key list - whether it is set
+    /// directly or comes in as the part of a profile that carries it.
+    /// </summary>
+    [Fact]
+    public void The_f1_squelch_override_key_reproduces_the_cps_save_byte_for_byte()
+    {
+        Action<CodeplugFields>[] ways =
+        [
+            f => f.SetFunctionKeyRole(FunctionKey.F1, FunctionKeyRole.SquelchOverride),
+            f => f.ApplyAudioAndPtt(),
+            f => f.ApplyPdnBasic(),
+            f => f.ApplyPdnExtra(),
+            f => f.ApplyPdnInternal(),
+        ];
+
+        foreach (Action<CodeplugFields> apply in ways)
+        {
+            CodeplugFields f = Fixtures.Open(Fixtures.DefaultDigitalIoTable);
+
+            apply(f);
+
+            Convert.ToHexString(f.Image.SectionBytes(0x0F)).Should().Be(Fixtures.SquelchOverrideFunctionKeyTable);
+            Convert.ToHexString(f.Image.SectionBytes(0x03)).Should().Be(Fixtures.SquelchOverrideFunctionTable);
+            Convert.ToHexString(f.Image.SectionBytes(0x18)).Should().Be(Fixtures.SquelchOverrideKeyList);
+            f.GetFunctionKeyRole(FunctionKey.F1).Should().Be(FunctionKeyRole.SquelchOverride);
+        }
+    }
+
+    [Fact]
+    public void Every_profile_puts_squelch_override_on_f1_and_leaves_the_other_keys_alone()
+    {
+        Action<CodeplugFields>[] profiles =
+        [
+            f => f.ApplyAudioAndPtt(),
+            f => f.ApplyPdnBasic(),
+            f => f.ApplyPdnExtra(),
+            f => f.ApplyPdnInternal(),
+        ];
+
+        foreach (Action<CodeplugFields> profile in profiles)
+        {
+            CodeplugFields f = Fixtures.Open(Fixtures.DefaultDigitalIoTable);
+
+            profile(f);
+
+            f.GetFunctionKeyRole(FunctionKey.F1).Should().Be(FunctionKeyRole.SquelchOverride);
+            foreach (FunctionKey other in Enum.GetValues<FunctionKey>().Where(k => k != FunctionKey.F1))
+            {
+                f.GetFunctionKeyRole(other).Should().Be(FunctionKeyRole.Unassigned, other.ToString());
+            }
+        }
+    }
+
+    [Fact]
+    public void Applying_a_profile_twice_does_not_append_the_key_entry_twice()
+    {
+        CodeplugFields f = Fixtures.Open(Fixtures.DefaultDigitalIoTable);
+
+        f.ApplyPdnExtra();
+        f.ApplyPdnExtra();
+
+        // the programmed-key list is a set, not a log: re-applying must leave it at one entry.
+        Convert.ToHexString(f.Image.SectionBytes(0x18)).Should().Be(Fixtures.SquelchOverrideKeyList);
+    }
+
+    [Fact]
+    public void Clearing_the_last_key_using_squelch_override_restores_the_default_records()
+    {
+        CodeplugFields f = Fixtures.Open(Fixtures.DefaultDigitalIoTable);
+
+        f.SetFunctionKeyRole(FunctionKey.F1, FunctionKeyRole.SquelchOverride);
+        f.SetFunctionKeyRole(FunctionKey.F1, FunctionKeyRole.Unassigned);
+
+        // byte for byte back to a default codeplug, including dropping the 0x18 record entirely.
+        Convert.ToHexString(f.Image.SectionBytes(0x0F)).Should().Be(Fixtures.DefaultFunctionKeyTable);
+        Convert.ToHexString(f.Image.SectionBytes(0x03)).Should().Be(Fixtures.DefaultFunctionTable);
+        f.Image.SectionBytes(0x18).Should().BeEmpty();
+        f.Image.Find(0x18, 0).Should().BeNull();
+    }
+
+    [Fact]
+    public void Only_the_named_key_moves()
+    {
+        CodeplugFields f = Fixtures.Open(Fixtures.DefaultDigitalIoTable);
+
+        f.SetFunctionKeyRole(FunctionKey.F3, FunctionKeyRole.SquelchOverride);
+
+        f.GetFunctionKeyRole(FunctionKey.F3).Should().Be(FunctionKeyRole.SquelchOverride);
+        f.GetFunctionKeyRole(FunctionKey.F1).Should().Be(FunctionKeyRole.Unassigned);
+        f.GetFunctionKeyRole(FunctionKey.F2).Should().Be(FunctionKeyRole.Unassigned);
+        f.GetFunctionKeyRole(FunctionKey.F4).Should().Be(FunctionKeyRole.Unassigned);
+
+        // and back again, byte for byte
+        f.SetFunctionKeyRole(FunctionKey.F3, FunctionKeyRole.Unassigned);
+        Convert.ToHexString(f.Image.SectionBytes(0x0F)).Should().Be(Fixtures.DefaultFunctionKeyTable);
+    }
+
+    [Fact]
+    public void The_function_stays_in_use_while_any_key_still_has_it()
+    {
+        CodeplugFields f = Fixtures.Open(Fixtures.DefaultDigitalIoTable);
+
+        f.SetFunctionKeyRole(FunctionKey.F1, FunctionKeyRole.SquelchOverride);
+        f.SetFunctionKeyRole(FunctionKey.F2, FunctionKeyRole.SquelchOverride);
+        f.SetFunctionKeyRole(FunctionKey.F1, FunctionKeyRole.Unassigned);
+
+        // F2 still uses it, so the function-level records must stay as they are.
+        Convert.ToHexString(f.Image.SectionBytes(0x03)).Should().Be(Fixtures.SquelchOverrideFunctionTable);
+        Convert.ToHexString(f.Image.SectionBytes(0x18)).Should().Be(Fixtures.SquelchOverrideKeyList);
+    }
+
+    [Fact]
+    public void The_other_captured_key_functions_read_back_but_cannot_be_written()
+    {
+        CodeplugFields f = Fixtures.Open(Fixtures.DefaultDigitalIoTable);
+
+        // the four-key CPS save: F1 Squelch Override, F2 Audible Indicators Volume,
+        // F3 Action Digital Output Line, F4 Backlighting Toggle.
+        f.Image.SetSectionBytes(0x0F, Convert.FromHexString("00040080006400004001"));
+
+        f.GetFunctionKeyRole(FunctionKey.F1).Should().Be(FunctionKeyRole.SquelchOverride);
+        f.GetFunctionKeyRole(FunctionKey.F2).Should().Be(FunctionKeyRole.AudibleIndicatorsVolume);
+        f.GetFunctionKeyRole(FunctionKey.F3).Should().Be(FunctionKeyRole.ActionDigitalOutputLine);
+        f.GetFunctionKeyRole(FunctionKey.F4).Should().Be(FunctionKeyRole.BacklightingToggle);
+
+        Action act = () => f.SetFunctionKeyRole(FunctionKey.F2, FunctionKeyRole.BacklightingToggle);
+        act.Should().Throw<ArgumentException>();
+    }
+
+    [Fact]
+    public void An_unrecognised_key_function_is_preserved_and_cannot_be_written()
+    {
+        CodeplugFields f = Fixtures.Open(Fixtures.DefaultDigitalIoTable);
+        byte[] table = f.Image.Require(0x0F, 0).Data;
+        table[0] = 0x7F;   // a 20-bit entry no CPS save has pinned
+
+        f.GetFunctionKeyRole(FunctionKey.F1).Should().Be(FunctionKeyRole.Other);
+        Action act = () => f.SetFunctionKeyRole(FunctionKey.F1, FunctionKeyRole.Other);
+        act.Should().Throw<ArgumentException>();
+
+        // reading another key must not disturb it
+        f.GetFunctionKeyRole(FunctionKey.F2).Should().Be(FunctionKeyRole.Unassigned);
+        f.Image.Require(0x0F, 0).Data[0].Should().Be(0x7F);
+    }
+
+    [Fact]
+    public void The_console_exposes_the_keys_by_their_front_panel_names()
+    {
+        CodeplugFields f = Fixtures.Open(Fixtures.DefaultDigitalIoTable);
+
+        FieldConsole.Get(f, "key.f1").Should().Be("Unassigned");
+        FieldConsole.Set(f, "key.f1", "SquelchOverride");
+        f.GetFunctionKeyRole(FunctionKey.F1).Should().Be(FunctionKeyRole.SquelchOverride);
+        FieldConsole.Get(f, "key.f1").Should().Be("SquelchOverride");
+        FieldConsole.Get(f, "key.f4").Should().Be("Unassigned");
+    }
+
     private static void AudioAndPttAreWiredForTheAuxConnector(CodeplugFields f)
     {
         Convert.ToHexString(f.Image.Require(0x3B, 0).Data).Should().Be(PacketAudioBlock);

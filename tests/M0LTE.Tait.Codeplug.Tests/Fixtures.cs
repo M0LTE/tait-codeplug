@@ -42,13 +42,39 @@ internal static class Fixtures
     /// <summary>The same block with the tap-out point moved to R2 for the internal options board.</summary>
     public const string PacketAudioBlockR2 = "000100C2088000004000003A0020004000001000";
 
-    // Item index entries (7 bytes each) for the items the PDN profiles touch: the audio block
-    // (0x3B, 95 bits x 4) and the digital line table (0x37, 132 bits x 15), as a real readout has them.
-    private const string ItemIndex = "3B5F0004000900" + "3784000F000600";
+    // The three Key Settings records as a factory-default TM8100 (DBVer 0094) holds them, and as the
+    // CPS saves them once F1 alone is set to Squelch Override. Another matched before/after of exactly
+    // one CPS edit: those two codeplugs differ in these three records and nothing else.
+
+    /// <summary>Key table (0x0F): four 20-bit entries, one per front-panel key, all unassigned.</summary>
+    public const string DefaultFunctionKeyTable = "00000000000000000000";
+
+    /// <summary>Key table with F1 - the first entry - programmed to Squelch Override.</summary>
+    public const string SquelchOverrideFunctionKeyTable = "00040000000000000000";
+
+    /// <summary>Function table (0x03): 65 14-bit entries, one per assignable function. Squelch
+    /// Override is entry 43, here 0x2000 - not in use by any key.</summary>
+    public const string DefaultFunctionTable =
+        "83142034C808228104002040040002C000204080002004080240002002080010000C00000C0004400160200C0804428160C82032080002802020080800828000200808020280002000080002802020080802828003000820400810200C0804428160000C0004400160002000080002800104";
+
+    /// <summary>The same table with Squelch Override's entry marked in use by a key (0x2000 -&gt; 0x0C00).</summary>
+    public const string SquelchOverrideFunctionTable =
+        "83142034C808228104002040040002C000204080002004080240002002080010000C00000C0004400160200C0804428160C82032080002802020080800828000200808020280002000080002302020080802828003000820400810200C0804428160000C0004400160002000080002800104";
+
+    /// <summary>Programmed-key list (0x18) with Squelch Override's single 22-bit entry. A default
+    /// codeplug carries no 0x18 record at all and an item count of zero.</summary>
+    public const string SquelchOverrideKeyList = "100000";
+
+    // Item index entries (7 bytes each) for the items the profiles touch: the function table
+    // (0x03, 14 bits x 65), the key table (0x0F, 20 bits x 4), the programmed-key list (0x18, 22 bits
+    // x 0), the audio block (0x3B, 95 bits x 4) and the digital line table (0x37, 132 bits x 15), as a
+    // real readout has them.
+    private const string ItemIndex =
+        "030E0041000200" + "0F140004000100" + "18160000000300" + "3B5F0004000900" + "3784000F000600";
 
     /// <summary>A codeplug carrying every block the PDN profiles write: the data/signalling record,
-    /// the item index, the PTT table, the audio block and the digital I/O line table. Every block but
-    /// the data record is the real factory-default one.</summary>
+    /// the item index, the PTT table, the audio block, the digital I/O line table, the function table
+    /// and the front-panel key table. Every block but the data record is the real factory-default one.</summary>
     public static CodeplugFields Open(string digitalIoTableHex)
     {
         var image = new CodeplugImage(
@@ -56,9 +82,11 @@ internal static class Fixtures
             [
                 new CodeplugRecord(0x01, 0, Convert.FromHexString(ItemIndex)),
                 new CodeplugRecord(0x09, 0, new byte[37]),
+                new CodeplugRecord(0x0F, 0, Convert.FromHexString(DefaultFunctionKeyTable)),
                 new CodeplugRecord(0x19, 0, Convert.FromHexString(DefaultPttTable)),
                 new CodeplugRecord(0x3B, 0, Convert.FromHexString(DefaultAudioBlock)),
             ]);
+        image.SetSectionBytes(0x03, Convert.FromHexString(DefaultFunctionTable));
         image.SetSectionBytes(0x37, Convert.FromHexString(digitalIoTableHex));
         return CodeplugFields.Open(image);
     }

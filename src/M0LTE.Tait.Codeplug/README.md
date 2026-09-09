@@ -59,8 +59,9 @@ CodeplugImage live = programmer.ReadImage();
 Composable patches that *upgrade a radio to the Packet.NET feature set* without touching its RF
 config (channels, frequencies, power), so they layer safely onto a radio already provisioned for its
 environment. They change the data record (0x09), the audio block (0x3B), the digital I/O lines they
-program (0x37) and the PTT table (0x19). For a radio arriving from a foreign application, prefer a
-clean flash of a full codeplug first, then apply a profile.
+program (0x37), the PTT table (0x19) and the three Key Settings items (0x0F, 0x03, 0x18). For a radio
+arriving from a foreign application, prefer a clean flash of a full codeplug first, then apply a
+profile.
 
 They nest: `audio-and-ptt` is the aux-connector modem wiring, `pdn-basic` is that plus the CCDI
 command channel, `pdn-extra` is that plus the FFSK modem, and `pdn-internal` is `pdn-extra` moved onto
@@ -68,13 +69,15 @@ the internal options connector. Apply the one that describes the radio - the out
 ones. `audio-and-ptt` is exposed on its own for a radio that needs only the wiring: one whose data
 settings are already right, or one being set up for an external modem without the CCDI side.
 
-- **`audio-and-ptt`** wires the modem to the **auxiliary connector**, and does nothing else: the
+- **`audio-and-ptt`** wires the modem to the **auxiliary connector**: the
   `audio packet-defaults` block (Rx tap-out **R1**, type Split so the speaker keeps working, unmute
   **Except on PTT**; EPTT1 tap-in **T13**), **AUX_GPI1 as an active-low External PTT 1 input** (the line
   a soundcard interface or TNC keys), and **External PTT 1 transmitting Data from the Audio Tap In**
   rather than Voice from the aux mic - without that last one the line keys the radio but puts the wrong
   audio on air. Those three records - 0x19, 0x37 and 0x3B - come out byte-identical to a CPS save of the
-  same configuration on a default TM8100 codeplug. It never touches the data record.
+  same configuration on a default TM8100 codeplug. It never touches the data record. It also programs
+  the front-panel **F1 key to Squelch Override** (see [Function keys](#function-keys)) - not part of the
+  wiring, but wanted on every radio these profiles provision, and this is the one they all pass through.
 - **`pdn-basic`** is `audio-and-ptt` plus the CCDI command channel that carries `Packet.Radio.Tait`'s
   telemetry and control: averaged/instantaneous RSSI, forward/reverse power, PA temperature,
   status/identity, transmitter keying, and the PROGRESS stream for carrier-sense (DCD) and external-PTT
@@ -125,6 +128,36 @@ CPS in the TARPN TM8105 template), and `BusyStatusOutput` (Output, Busy Status).
 `Other`, is preserved untouched, and cannot be written. `GetDigitalIoRole` / `SetDigitalIoRole` take a
 `DigitalIoLine`; the console names them `gpio.aux_gpi1` .. `gpio.aux_gpio7`, `gpio.iop_gpio1` ..
 `gpio.iop_gpio7` and `gpio.ch_gpio1`.
+
+## Function keys
+
+The Key Settings form is record 0x0F: four 20-bit entries, one per front-panel key, in `FunctionKey`
+order `F1`..`F4`, all zero on a default codeplug. As with the digital lines, an entry is read and
+written **whole** - it carries the function and its parameters together, and one save cannot say which
+bits are which - exposed as `FunctionKeyRole`. `Unassigned` and `SquelchOverride` (the key opens the
+receiver's mute, so the speaker passes audio whatever the squelch and subaudible signalling would
+otherwise do) can be written; `AudibleIndicatorsVolume`, `ActionDigitalOutputLine` and
+`BacklightingToggle` are recognised on read only. Anything else reads as `Other`, is preserved
+untouched, and cannot be written.
+
+Programming a key is not one record but three items, which is why only the roles with a matched
+before/after CPS capture can be written:
+
+| item | what it holds |
+|---|---|
+| `0x0F` | the key table itself - the 20-bit entry per key |
+| `0x03` | 65 14-bit entries, one per assignable function, recording whether it is in use by a key. Squelch Override is entry 43: `0x2000` unused, `0x0C00` used. It follows the *function*, not the key - it is identical in a save with Squelch Override alone and one with three other keys alongside it |
+| `0x18` | a list of 22-bit entries, one per programmed key in the order they were programmed, its length in the item index. Absent entirely on a default codeplug. Squelch Override's entry is `0x10` |
+
+The 0x18 list is otherwise undecoded, so it is maintained as a set: the entry is appended when the
+function comes into use and dropped when the last key using it is cleared. Setting `F1` to Squelch
+Override on a factory-default TM8100 codeplug reproduces a CPS save of that edit byte for byte in every
+record of the file; clearing it again restores the default records exactly, 0x18 included. Only `F1`
+has been captured - the key table entry is unambiguously per-key, but bench the result if you program
+Squelch Override onto another key.
+
+`GetFunctionKeyRole` / `SetFunctionKeyRole` take a `FunctionKey`; the console names them `key.f1` ..
+`key.f4`. `get radio.m8p | grep key.` lists all four; `set radio.m8p key.f1 SquelchOverride` sets one.
 
 ## Status and safety
 

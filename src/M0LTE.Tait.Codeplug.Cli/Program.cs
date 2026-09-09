@@ -380,8 +380,9 @@ static void PrintUsage()
     Console.WriteLine("  patch   <port> profile <name>          live-apply an upgrade profile");
     Console.WriteLine();
     Console.WriteLine("upgrade profiles (leave RF/channels untouched; adjust the bauds for your setup):");
-    Console.WriteLine("  audio-and-ptt the aux-connector modem wiring on its own: audio taps R1/split/except-");
-    Console.WriteLine("              on-PTT + T13, AUX_GPI1 = External PTT 1, EPTT1 transmits data from the tap in");
+    Console.WriteLine("  audio-and-ptt the aux-connector modem wiring: audio taps R1/split/except-on-PTT + T13,");
+    Console.WriteLine("              AUX_GPI1 = External PTT 1, EPTT1 transmits data from the tap in, F1 = squelch");
+    Console.WriteLine("              override. Carried by all three below, so every profile sets that key.");
     Console.WriteLine("  pdn-basic   CCDI telemetry + control (RSSI, fwd/rev power, status, PTT, DCD) out of the");
     Console.WriteLine("              Mic connector (data port Mic), plus audio-and-ptt");
     Console.WriteLine("  pdn-extra   pdn-basic + the TNC-less internal FFSK packet modem and SDM mode signalling");

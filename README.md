@@ -142,6 +142,14 @@ and nothing else - one whose data settings are already right, or one being set u
 without the CCDI side. The PTT sources are settable individually too: `set radio.m8p ptt.eptt1
 DataFromAudioTapIn` (or `Voice`); `get radio.m8p | grep ptt.` lists all three.
 
+It also programs the front-panel **F1 key to Squelch Override**, so you can open the speaker and hear
+what is really on the channel whatever the squelch and subaudible signalling are doing. Every profile
+passes through `audio-and-ptt`, so every profile carries it. That is an operator convenience rather
+than part of the modem wiring, so note it if you apply `audio-and-ptt` for the wiring alone. The keys
+are settable individually: `set radio.m8p key.f1 SquelchOverride` (or `Unassigned`); `get radio.m8p |
+grep key.` lists all four. Like the digital I/O lines, a key is written as a whole pattern validated
+against a CPS save, and a function this tool has not captured reads as `Other` and is left untouched.
+
 `pdn-basic` adds the CCDI command channel on top of that wiring - CCDI on, the radio in Command mode at
 power-up, progress messages on, the command baud at 28800, and the data port on Mic, the front-panel
 connector the host's serial lead plugs into - and `pdn-extra` adds the transparent FFSK modem and SDM

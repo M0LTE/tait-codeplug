@@ -141,6 +141,15 @@ public static class FieldConsole
             }
         }
 
+        // Key Settings form (record 0x0F; only if present)
+        if (f.HasFunctionKeys)
+        {
+            foreach (FunctionKey key in System.Enum.GetValues<FunctionKey>())
+            {
+                rows.Add(("key." + key.ToString().ToLowerInvariant(), f.GetFunctionKeyRole(key).ToString()));
+            }
+        }
+
         return rows;
     }
 
@@ -278,6 +287,9 @@ public static class FieldConsole
                 return;
             case var ptt when ptt.StartsWith("ptt.", StringComparison.OrdinalIgnoreCase):
                 f.SetPttTransmission(PttSourceNamed(ptt[4..]), Enum<PttTransmission>(value));
+                return;
+            case var key when key.StartsWith("key.", StringComparison.OrdinalIgnoreCase):
+                f.SetFunctionKeyRole(Enum<FunctionKey>(key[4..]), Enum<FunctionKeyRole>(value));
                 return;
             case "audio":
                 if (!string.Equals(value, "packet-defaults", StringComparison.OrdinalIgnoreCase))

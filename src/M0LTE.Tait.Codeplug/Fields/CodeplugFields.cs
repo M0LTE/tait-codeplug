@@ -417,12 +417,19 @@ public sealed class CodeplugFields
     /// Data from the Audio Tap In rather than Voice from the aux mic, so keying that line actually
     /// puts the modem's audio on air.
     /// <para>
+    /// It also programs the front-panel <b>F1</b> key to Squelch Override, so the operator can open
+    /// the speaker and hear the channel whatever the squelch and subaudible signalling are doing.
+    /// That is an operator convenience rather than part of the modem wiring, but it is wanted on
+    /// every radio these profiles provision, and this is the one they all pass through.
+    /// </para>
+    /// <para>
     /// <see cref="ApplyPdnBasic"/> applies it as part of a full packet upgrade; it is exposed on its
     /// own for a radio that needs the wiring and nothing else - one already running the data settings,
     /// or one being set up for an external modem without the CCDI side. It touches neither the data
     /// record nor the RF config: it changes the audio block (0x3B), one line of the digital I/O table
-    /// (0x37) and one entry of the PTT table (0x19), and those three records reproduce, byte for byte,
-    /// a CPS save of that configuration on an otherwise default TM8100 codeplug (DBVer 0095).
+    /// (0x37) and one entry of the PTT table (0x19) - those three reproduce, byte for byte, a CPS save
+    /// of that configuration on an otherwise default TM8100 codeplug (DBVer 0095) - plus the three key
+    /// items (0x0F, 0x03, 0x18), which likewise reproduce a CPS save of that key edit (DBVer 0094).
     /// </para>
     /// </summary>
     public void ApplyAudioAndPtt()
@@ -430,6 +437,7 @@ public sealed class CodeplugFields
         ApplyPacketAudioDefaults();
         SetDigitalIoRole(DigitalIoLine.AuxGpi1, DigitalIoRole.ExternalPtt1Input);
         SetPttTransmission(PttSource.ExternalPtt1, PttTransmission.DataFromAudioTapIn);
+        SetFunctionKeyRole(FunctionKey.F1, FunctionKeyRole.SquelchOverride);
     }
 
     /// <summary>
@@ -619,6 +627,27 @@ public sealed class CodeplugFields
             int len = Math.Min(32, buf.Length - off);
             Image.SetRecord(new CodeplugRecord(section, (byte)rec, buf[off..(off + len)]));
         }
+    }
+
+    /// <summary>How many entries the item index says an item holds. The authority on a table's
+    /// length: an item whose entries are not a whole number of bytes cannot be counted from the
+    /// record bytes alone.</summary>
+    private int GetItemCount(byte itemId)
+    {
+        byte[] concat = Image.Records
+            .Where(r => r.Section == 0x01)
+            .OrderBy(r => r.Index)
+            .SelectMany(r => r.Data)
+            .ToArray();
+        for (int off = 0; off + 7 <= concat.Length; off += 7)
+        {
+            if (concat[off] == itemId)
+            {
+                return concat[off + 3] | (concat[off + 4] << 8);
+            }
+        }
+
+        throw new InvalidOperationException($"item 0x{itemId:X2} not found in the item index");
     }
 
     private void SetItemCount(byte itemId, int count)
@@ -1950,5 +1979,206 @@ public sealed class CodeplugFields
     {
         get => (Audio[14] & 0x08) != 0;
         set { if (value) { Audio[14] |= 0x08; } else { Audio[14] &= 0xF7; } }
+    }
+
+    // ---- Key Settings form: the front-panel function keys -------------------------------
+    //
+    // Programming a key touches three items, all of which a single-edit CPS diff pins exactly:
+    //
+    //   0x0F  the key table itself - four 20-bit entries, one per key, in F1..F4 order, all zero on a
+    //         default codeplug. The entry carries the function and its parameters together; which bits
+    //         are which cannot be told from the saves available, so entries are read and written whole,
+    //         the same way DigitalIoRole handles a line's 62 configuration bits.
+    //
+    //   0x03  a 65-entry table of 14-bit entries, one per assignable function, that tracks whether the
+    //         function is in use by a key. Squelch Override is entry 43: 0x2000 unused, 0x0C00 used.
+    //         Entry 43 is the same in both captured saves - one with Squelch Override the only key
+    //         programmed, one with it alongside three others - so it follows the function, not the key.
+    //
+    //   0x18  a list of 22-bit entries, one appended per programmed key in the order they were
+    //         programmed, with the item-index count as its length. Absent on a default codeplug.
+    //         Squelch Override's entry is 0x10. Its contents are otherwise not decoded, so it is
+    //         maintained as a set: the entry is appended when the function comes into use and dropped
+    //         when the last key using it is cleared.
+    //
+    // Applying Squelch Override to F1 on a factory-default TM8100 codeplug (DBVer 0094) reproduces the
+    // CPS's own save of that edit byte for byte, in every record of the file.
+
+    private const byte FunctionKeySection = 0x0F;
+    private const int FunctionKeyEntryBits = 20;
+    private const int FunctionKeyCount = 4;
+
+    // Whole 20-bit key-table entries, as the CPS writes them.
+    private const long KeyUnassigned = 0x00000;               // every key of a default codeplug
+    private const long KeySquelchOverride = 0x00400;
+    private const long KeyAudibleIndicatorsVolume = 0x00800;
+    private const long KeyActionDigitalOutputLine = 0x00064;
+    private const long KeyBacklightingToggle = 0x01400;
+
+    // The function-in-use table, and Squelch Override's entry in it.
+    private const byte FunctionUseSection = 0x03;
+    private const int FunctionUseEntryBits = 14;
+    private const int SquelchOverrideFunctionEntry = 43;
+    private const long FunctionUnused = 0x2000;
+    private const long FunctionUsedByAKey = 0x0C00;
+
+    // The programmed-key list, and Squelch Override's entry in it.
+    private const byte KeyFunctionListSection = 0x18;
+    private const int KeyFunctionListEntryBits = 22;
+    private const long KeyFunctionListSquelchOverride = 0x10;
+
+    /// <summary>True when the codeplug carries the front-panel key table (record 0x0F).</summary>
+    public bool HasFunctionKeys => HasRecord(FunctionKeySection, 0);
+
+    /// <summary>What a front-panel function key is programmed to do. <see cref="FunctionKeyRole.Other"/>
+    /// means a function this map does not recognise; its bits are preserved untouched.</summary>
+    public FunctionKeyRole GetFunctionKeyRole(FunctionKey key) =>
+        new ChannelBits([FunctionKeyTable()]).GetBits(FunctionKeyOffset(key), FunctionKeyEntryBits) switch
+        {
+            KeyUnassigned => FunctionKeyRole.Unassigned,
+            KeySquelchOverride => FunctionKeyRole.SquelchOverride,
+            KeyAudibleIndicatorsVolume => FunctionKeyRole.AudibleIndicatorsVolume,
+            KeyActionDigitalOutputLine => FunctionKeyRole.ActionDigitalOutputLine,
+            KeyBacklightingToggle => FunctionKeyRole.BacklightingToggle,
+            _ => FunctionKeyRole.Other,
+        };
+
+    /// <summary>
+    /// Program a front-panel function key. Rewrites only that key's 20-bit entry - the other three
+    /// keys are left exactly as they were - and then brings the two function-level items (0x03 and
+    /// 0x18) into line with which keys now use Squelch Override.
+    /// </summary>
+    /// <remarks>
+    /// Only <see cref="FunctionKeyRole.SquelchOverride"/> and <see cref="FunctionKeyRole.Unassigned"/>
+    /// can be written: those are the two ends of the one single-edit CPS capture available, so they
+    /// are the only ones whose effect on all three items is known. The other roles are recognised on
+    /// read but have no pinned 0x03/0x18 side, and writing a guess at those is exactly what this map
+    /// does not do. Only F1 has been captured; the key table entry is unambiguously per-key, but bench
+    /// the result if you program Squelch Override onto another key.
+    /// </remarks>
+    /// <exception cref="ArgumentException">The role is one this map cannot write.</exception>
+    public void SetFunctionKeyRole(FunctionKey key, FunctionKeyRole role)
+    {
+        long pattern = role switch
+        {
+            FunctionKeyRole.Unassigned => KeyUnassigned,
+            FunctionKeyRole.SquelchOverride => KeySquelchOverride,
+            _ => throw new ArgumentException($"{role} is not a function that can be written", nameof(role)),
+        };
+
+        byte[] table = FunctionKeyTable();
+        new ChannelBits([table]).SetBits(FunctionKeyOffset(key), FunctionKeyEntryBits, pattern);
+        Image.SetSectionBytes(FunctionKeySection, table);
+
+        SetSquelchOverrideInUse(AnyFunctionKeyIs(FunctionKeyRole.SquelchOverride));
+    }
+
+    /// <summary>True when any of the four keys is programmed to this role.</summary>
+    private bool AnyFunctionKeyIs(FunctionKeyRole role)
+    {
+        foreach (FunctionKey key in Enum.GetValues<FunctionKey>())
+        {
+            if (GetFunctionKeyRole(key) == role)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Mark Squelch Override as used (or not) by a key in the two function-level items: its
+    /// entry in the function table (0x03) and its presence in the programmed-key list (0x18). Both are
+    /// idempotent, so re-applying a profile does not append the list entry twice.</summary>
+    private void SetSquelchOverrideInUse(bool inUse)
+    {
+        byte[] functions = Image.SectionBytes(FunctionUseSection);
+        if (functions.Length * 8 < (SquelchOverrideFunctionEntry + 1) * FunctionUseEntryBits)
+        {
+            throw new NotSupportedException(
+                $"this codeplug's function table (record 0x{FunctionUseSection:X2}) is too short to hold entry {SquelchOverrideFunctionEntry}");
+        }
+
+        new ChannelBits([functions]).SetBits(
+            SquelchOverrideFunctionEntry * FunctionUseEntryBits, FunctionUseEntryBits,
+            inUse ? FunctionUsedByAKey : FunctionUnused);
+        Image.SetSectionBytes(FunctionUseSection, functions);
+
+        List<long> list = ReadKeyFunctionList();
+        if (list.Contains(KeyFunctionListSquelchOverride) == inUse)
+        {
+            return;
+        }
+
+        if (inUse)
+        {
+            list.Add(KeyFunctionListSquelchOverride);
+        }
+        else
+        {
+            list.Remove(KeyFunctionListSquelchOverride);
+        }
+
+        WriteKeyFunctionList(list);
+    }
+
+    /// <summary>The programmed-key list (0x18). Its length comes from the item index, not the record
+    /// length: entries are 22 bits, so the last one is padded to the byte and the bytes alone would
+    /// over-count.</summary>
+    private List<long> ReadKeyFunctionList()
+    {
+        byte[] table = Image.SectionBytes(KeyFunctionListSection);
+        int count = GetItemCount(KeyFunctionListSection);
+        if (count * KeyFunctionListEntryBits > table.Length * 8)
+        {
+            throw new NotSupportedException(
+                $"the item index claims {count} programmed-key entries but record 0x{KeyFunctionListSection:X2} holds {table.Length} bytes");
+        }
+
+        var bits = new ChannelBits([table]);
+        var entries = new List<long>(count);
+        for (int i = 0; i < count; i++)
+        {
+            entries.Add(bits.GetBits(i * KeyFunctionListEntryBits, KeyFunctionListEntryBits));
+        }
+
+        return entries;
+    }
+
+    /// <summary>Rewrite the programmed-key list and its item count. An empty list writes no record at
+    /// all, which is how a default codeplug carries it.</summary>
+    private void WriteKeyFunctionList(List<long> entries)
+    {
+        byte[] table = new byte[((entries.Count * KeyFunctionListEntryBits) + 7) / 8];
+        var bits = new ChannelBits([table]);
+        for (int i = 0; i < entries.Count; i++)
+        {
+            bits.SetBits(i * KeyFunctionListEntryBits, KeyFunctionListEntryBits, entries[i]);
+        }
+
+        Image.SetSectionBytes(KeyFunctionListSection, table);
+        SetItemCount(KeyFunctionListSection, entries.Count);
+    }
+
+    private byte[] FunctionKeyTable()
+    {
+        byte[] table = Image.SectionBytes(FunctionKeySection);
+        if (table.Length * 8 < FunctionKeyCount * FunctionKeyEntryBits)
+        {
+            throw new NotSupportedException(
+                $"this codeplug has no front-panel key table (record 0x{FunctionKeySection:X2})");
+        }
+
+        return table;
+    }
+
+    private static int FunctionKeyOffset(FunctionKey key)
+    {
+        if (!Enum.IsDefined(key))
+        {
+            throw new ArgumentOutOfRangeException(nameof(key), key, "not a function key");
+        }
+
+        return (int)key * FunctionKeyEntryBits;
     }
 }

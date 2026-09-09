@@ -253,3 +253,52 @@ public enum DigitalIoRole
     /// preserved but cannot be described or set.</summary>
     Other,
 }
+
+/// <summary>The radio's four front-panel function keys (the CPS Key Settings form), in the order the
+/// codeplug's key table (record 0x0F) holds them: one 20-bit entry each.</summary>
+public enum FunctionKey
+{
+    /// <summary>Front-panel function key 1.</summary>
+    F1 = 0,
+
+    /// <summary>Front-panel function key 2.</summary>
+    F2 = 1,
+
+    /// <summary>Front-panel function key 3.</summary>
+    F3 = 2,
+
+    /// <summary>Front-panel function key 4.</summary>
+    F4 = 3,
+}
+
+/// <summary>
+/// What pressing a front-panel function key does. Like <see cref="DigitalIoRole"/> these are whole
+/// 20-bit entries lifted from real CPS saves rather than a field per dropdown - one save cannot say
+/// which bits carry the function and which carry its parameters - so a key programmed to anything
+/// not captured here reads as <see cref="Other"/> and its bits are preserved untouched.
+/// </summary>
+public enum FunctionKeyRole
+{
+    /// <summary>No function (the CPS default for all four keys).</summary>
+    Unassigned,
+
+    /// <summary>"Squelch Override": the key opens the receiver's mute, so the speaker passes audio
+    /// whether or not the squelch and any subaudible signalling would otherwise open it. The one
+    /// role this map can write to a key, pinned byte-for-byte to a CPS save.</summary>
+    SquelchOverride,
+
+    /// <summary>"Audible Indicators Volume". Recognised on read only.</summary>
+    AudibleIndicatorsVolume,
+
+    /// <summary>"Action Digital Output Line". Recognised on read only, and only for the one output
+    /// line and action captured - the parameters share the entry, so a different line reads as
+    /// <see cref="Other"/>.</summary>
+    ActionDigitalOutputLine,
+
+    /// <summary>"Backlighting Toggle". Recognised on read only.</summary>
+    BacklightingToggle,
+
+    /// <summary>Programmed to something this map does not recognise. Read-only: the bits are
+    /// preserved but cannot be described or set.</summary>
+    Other,
+}
