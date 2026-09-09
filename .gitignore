@@ -28,5 +28,7 @@ coverage/
 # saved configuration. Kept out of git; the protocol write-up is linked from the README.
 tait-programming-research/
 
-# Backups the CLI writes before a live patch
-*.pre-patch-backup-*.m8p
+# Codeplugs. A real radio's configuration, and the backups the CLI and the TUI write before a
+# live patch land wherever the tool was run from - including in here. None belong in git; the
+# test fixtures are hex string constants, not files.
+*.m8p
