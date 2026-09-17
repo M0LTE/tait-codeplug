@@ -13,7 +13,8 @@ namespace M0LTE.Tait.Codeplug.Cli;
 ///
 /// The download is checked against the release's own <c>SHA256SUMS</c> before anything is replaced,
 /// and the swap is a rename, so a failure anywhere leaves the existing binary untouched. Only makes
-/// sense for the self-contained release binaries - a build tree gets told to use git instead.
+/// sense for the self-contained release binaries - a build tree gets told to use git instead, and a
+/// copy dpkg installed gets told to use apt (see <see cref="AptInstallPolicy"/>).
 /// </summary>
 internal static class SelfUpgrade
 {
@@ -37,6 +38,17 @@ internal static class SelfUpgrade
             // binary would be surprising, so say what to do instead.
             Console.Error.WriteLine($"error: this is running as '{fileName}', not a released {ExecutableName} binary.");
             Console.Error.WriteLine("       --upgrade replaces a downloaded release; from a build tree, use git pull instead.");
+            return 2;
+        }
+
+        if (AptInstallPolicy.ShouldDeferToApt(processPath, File.Exists))
+        {
+            // dpkg owns this file. Replacing it would leave the package database describing
+            // something that is no longer there, and the next apt upgrade would undo it anyway.
+            Console.Error.WriteLine($"error: this copy was installed from the {AptInstallPolicy.RepositoryName()} apt repository,");
+            Console.Error.WriteLine($"       so {processPath} belongs to dpkg and --upgrade must not replace it.");
+            Console.Error.WriteLine("       upgrade it with:");
+            Console.Error.WriteLine("           sudo apt update && sudo apt install --only-upgrade tait-codeplug");
             return 2;
         }
 

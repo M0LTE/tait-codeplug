@@ -33,6 +33,10 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Job level, not step level: a secret put in a step's own `env:` is not visible to that
+    # step's `if:`, so the "is the token there?" test below has to read it from here.
+    env:
+      APT_DISPATCH_TOKEN: ${{ secrets.APT_DISPATCH_TOKEN }}
     permissions:
       contents: write   # gh release create
       id-token: write   # OIDC token for nuget.org trusted publishing
@@ -123,6 +127,57 @@ jobs:
           file release/*
           ls -l release/
 
+      - name: Build .deb packages
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Pin the changelog date to the commit being built so a rebuild of a tag is
+          # byte-identical. %ct is always a Unix timestamp, unlike the event payload's
+          # pushed_at, which is an integer for push events and an ISO string elsewhere.
+          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          # This publishes the three Linux arches a second time rather than repackaging what
+          # the loop above produced. It costs a couple of minutes and buys the guarantee that
+          # the .deb payload was built with exactly the flags in build-deb.sh, which is where
+          # someone will look when a packaged binary misbehaves.
+          for arch in amd64 arm64 armhf; do
+            echo "::group::deb $arch"
+            packaging/build-deb.sh "${VERSION}" "$arch" ./release
+            echo "::endgroup::"
+          done
+          ls -l release/*.deb
+
+      - name: Verify .deb contents
+        run: |
+          set -euo pipefail
+          for deb in ./release/*.deb; do
+            echo "::group::$(basename "$deb")"
+            dpkg-deb --info "$deb"
+            # Capture the listing once and match it in memory. Piping dpkg-deb straight into
+            # `grep -q` makes grep close the pipe the moment it matches, and the SIGPIPE
+            # dpkg-deb takes for that becomes a pipeline failure under pipefail.
+            listing="$(dpkg-deb --contents "$deb")"
+            echo "$listing"
+            # The program itself. A plain file, not a symlink: the single-file publish bundles
+            # the native shim, so there is no payload directory to point at.
+            grep -qE '^-rwxr-xr-x .* \./usr/bin/tait-codeplug$' <<<"$listing"
+            # Debian requires a copyright file, and this one carries the AGPL notice.
+            grep -q 'usr/share/doc/tait-codeplug/copyright$' <<<"$listing"
+            grep -q 'usr/share/doc/tait-codeplug/changelog\.Debian\.gz$' <<<"$listing"
+            # --upgrade refuses on a packaged copy by looking for this file. If it stops being
+            # shipped, an apt install silently goes back to overwriting a dpkg-owned binary.
+            grep -q 'usr/share/tait-codeplug/installed-from-apt$' <<<"$listing"
+            # xz, not the host dpkg's zstd default: dpkg older than 1.21.18 (bullseye, and so
+            # Raspberry Pi OS bullseye) cannot read a zstd archive at all. `ar t` is what shows
+            # this - dpkg-deb --info does not name the members.
+            members="$(ar t "$deb")"
+            grep -qx 'data.tar.xz' <<<"$members" || {
+              echo "::error::$(basename "$deb") is not xz-compressed ($members); bullseye would refuse it"
+              exit 1
+            }
+            echo "::endgroup::"
+          done
+
       - name: Checksums + create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -131,7 +186,11 @@ jobs:
         run: |
           set -euo pipefail
           cd release
-          sha256sum tait-codeplug-* > SHA256SUMS
+          # The .deb files are tait-codeplug_<version>_<arch>.deb: an underscore, so the
+          # tait-codeplug-* glob above them does not match. Widened deliberately, and the
+          # binary asset names are unchanged - SelfUpgrade looks its download up in this file
+          # by exact asset name, so renaming one would break --upgrade for everyone on it.
+          sha256sum tait-codeplug-* tait-codeplug_*.deb > SHA256SUMS
           cat SHA256SUMS
           cd ..
           # Release notes = what changed in this version, then how to install it. The changes come
@@ -177,7 +236,39 @@ jobs:
             release/tait-codeplug-"${VERSION}"-win-x64.exe \
             release/tait-codeplug-"${VERSION}"-osx-x64 \
             release/tait-codeplug-"${VERSION}"-osx-arm64 \
+            release/tait-codeplug_"${VERSION}"_amd64.deb \
+            release/tait-codeplug_"${VERSION}"_arm64.deb \
+            release/tait-codeplug_"${VERSION}"_armhf.deb \
             release/SHA256SUMS \
             --repo "${REPO}" \
             --title "tait-codeplug ${VERSION}" \
             --notes-file release/NOTES.md
+
+      - name: Tell the apt repo to rebuild
+        # Last, and only after gh release create has succeeded: packet-net/apt indexes whatever
+        # is on `releases/latest` when it runs, so dispatching before the assets exist would
+        # just make it re-index the previous release.
+        if: env.APT_DISPATCH_TOKEN != ''
+        env:
+          GH_TOKEN: ${{ secrets.APT_DISPATCH_TOKEN }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          # Fire and forget: packet-net/apt rebuilds its whole index from every source repo's
+          # latest release, so the payload is only there for the run log. A failure here must
+          # not fail a release that has already shipped - the hourly cron picks it up.
+          #
+          # gh api --input - with a JSON body, not -f client_payload[...]=...: gh's -f does not
+          # do curl-style bracket nesting, so the nested object has to arrive as JSON.
+          payload=$(printf '{"event_type":"release-published","client_payload":{"repo":"%s","tag":"v%s"}}' \
+            "$GITHUB_REPOSITORY" "$VERSION")
+          if printf '%s' "$payload" | gh api -X POST repos/packet-net/apt/dispatches --input -; then
+            echo "apt repo rebuild triggered."
+          else
+            echo "::warning::could not trigger the packet-net/apt rebuild; its hourly cron will pick this release up."
+          fi
+
+      - name: Warn if APT_DISPATCH_TOKEN missing
+        # Not a failure. The apt repo's cron is the fallback, so a release without the secret
+        # still reaches apt, just later. Mirrors how a missing publishing key is handled above.
+        if: env.APT_DISPATCH_TOKEN == ''
+        run: echo "::warning::APT_DISPATCH_TOKEN is not visible to this repo - the apt repo was not poked. It will pick this release up within the hour."

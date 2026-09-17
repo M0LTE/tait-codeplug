@@ -4,6 +4,12 @@ What changed in each release. The section for a version is lifted into that vers
 
 Newest first. Add a section before tagging.
 
+## 0.13.0 - unreleased
+
+- **`apt install tait-codeplug` now works**, on Debian, Ubuntu and Raspberry Pi OS, for `amd64`, `arm64` and `armhf`. Three lines to add the [packet-net apt repository](https://github.com/packet-net/apt) and it installs like any other package, and `apt upgrade` keeps it current along with everything else on the machine; the README has the lines. The package is the same self-contained single-file binary as the release asset for that architecture, built by the same publish with the same flags, so nothing needs .NET installed. A release now attaches the three `.deb` files as assets too, for installing one by hand.
+- **`--upgrade` refuses on a copy installed from apt**, and says to run `sudo apt update && sudo apt install --only-upgrade tait-codeplug` instead. It used to overwrite whatever binary was running, which for a packaged copy means writing over a file dpkg owns: the package database would then describe something that is no longer there, and the next apt upgrade would put the old version back over the top. A copy you downloaded yourself still upgrades itself exactly as before, including one sitting in `/usr/local/bin` on a machine that also has the package.
+- **A tagged release reaches apt in about a minute** rather than up to fifteen. The release workflow now tells the apt repository to rebuild as soon as the assets are up, instead of leaving it to be noticed by a schedule.
+
 ## 0.12.0 - 2026-09-09
 
 - **Every profile now programs the front-panel `F1` key to Squelch Override**, so the operator can open the speaker and hear what is actually on the channel whatever the squelch and subaudible signalling are doing - the thing you reach for the moment a packet station sounds wrong. It goes in at `audio-and-ptt`, which the other three all pass through, so `pdn-basic`, `pdn-extra` and `pdn-internal` all carry it. Applied to a factory-default TM8100 codeplug the key edit reproduces a CPS save of the same edit **byte for byte, in every record of the file** (DBVer 0094). Still no RF or channel config touched.
