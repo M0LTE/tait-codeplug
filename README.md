@@ -17,7 +17,30 @@ Two things ship from this repo, at the same version:
 ## Install the CLI
 
 Each binary embeds the .NET runtime and the native serial library, so there is nothing else to
-install. Grab the one for your platform from the [latest release](https://github.com/M0LTE/tait-codeplug/releases/latest):
+install.
+
+### Debian, Ubuntu and Raspberry Pi OS: apt
+
+The recommended route, because `apt upgrade` then keeps it current along with everything else:
+
+```sh
+curl -fsSL https://packet-net.github.io/apt/pubkey.asc | sudo gpg --dearmor -o /usr/share/keyrings/packet-net.gpg
+echo "deb [signed-by=/usr/share/keyrings/packet-net.gpg] https://packet-net.github.io/apt ./" | sudo tee /etc/apt/sources.list.d/packet-net.list
+sudo apt update
+sudo apt install tait-codeplug
+```
+
+`amd64`, `arm64` and `armhf`. The same [packet-net apt repository](https://github.com/packet-net/apt)
+carries the rest of the Packet.NET packages, so the three lines above are worth having anyway.
+
+An apt-installed copy is upgraded with apt, not with `--upgrade`: run
+`sudo apt update && sudo apt install --only-upgrade tait-codeplug`. `--upgrade` will notice and tell
+you so rather than overwriting a file dpkg owns.
+
+### Everything else: download the binary
+
+Grab the one for your platform from the
+[latest release](https://github.com/M0LTE/tait-codeplug/releases/latest):
 
 ```sh
 curl -LO https://github.com/M0LTE/tait-codeplug/releases/latest/download/tait-codeplug-<version>-linux-x64
@@ -26,7 +49,8 @@ chmod +x tait-codeplug-<version>-linux-x64
 ```
 
 Assets: `linux-x64`, `linux-arm64`, `linux-arm` (armv7 / 32-bit Pi), `win-x64`, `osx-x64` (Intel),
-`osx-arm64` (Apple Silicon). `SHA256SUMS` covers every asset.
+`osx-arm64` (Apple Silicon). `SHA256SUMS` covers every asset. A binary installed this way updates
+itself with `tait-codeplug --upgrade`.
 
 Or build it yourself: `dotnet run --project src/M0LTE.Tait.Codeplug.Cli -- <verb> ...` (.NET 10 SDK).
 
@@ -187,7 +211,19 @@ Add a section to [`CHANGELOG.md`](CHANGELOG.md) for the version first: its bulle
 
 A `v*` tag runs [`.github/workflows/publish.yml`](.github/workflows/publish.yml): it gates on the test
 suite, pushes `M0LTE.Tait.Codeplug` to nuget.org via trusted publishing (OIDC, no stored API key), then
-cross-publishes the six CLI binaries and attaches them plus `SHA256SUMS` to a GitHub Release.
+cross-publishes the six CLI binaries, builds the three `.deb` packages
+([`packaging/build-deb.sh`](packaging/build-deb.sh)) and attaches them all plus `SHA256SUMS` to a
+GitHub Release.
+
+Last of all it POSTs a `release-published` `repository_dispatch` at
+[`packet-net/apt`](https://github.com/packet-net/apt), which rebuilds its index and picks the new
+`.deb`s up within a minute or so. That needs an `APT_DISPATCH_TOKEN` secret on this repo: a
+fine-grained PAT with **Contents: Read and write** on `packet-net/apt` and nothing else. Without it
+the release still ships and the run logs a warning; the apt repo's hourly cron then finds the
+release on its own.
+
+Note that a release marked **prerelease** or **draft** never reaches apt: the apt repo reads
+`releases/latest`, which ignores both. That is deliberate.
 
 ```sh
 git tag -a v0.3.0 -m "v0.3.0 - <one-line summary>" && git push origin v0.3.0
