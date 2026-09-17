@@ -54,6 +54,16 @@ itself with `tait-codeplug --upgrade`.
 
 Or build it yourself: `dotnet run --project src/M0LTE.Tait.Codeplug.Cli -- <verb> ...` (.NET 10 SDK).
 
+### If it goes wrong
+
+Interactive mode writes a crash report to the temporary directory
+(`/tmp/tait-codeplug-crash-<timestamp>.log` on Linux) and prints the same thing to the terminal once
+it has handed the screen back. Paste that into an
+[issue](https://github.com/M0LTE/tait-codeplug/issues): it names the version, the platform, what the
+tool was doing and the full error. The one-shot verbs print their errors straight to the terminal, so
+running the same operation as `read` or `patch` rather than in interactive mode is also a quick way
+to see what a failure actually says.
+
 ## Interactive mode
 
 Run it with no arguments and you get a screen instead of a verb: pick a port, read the radio, edit the packet-relevant essentials, write it back.

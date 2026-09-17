@@ -4,6 +4,12 @@ What changed in each release. The section for a version is lifted into that vers
 
 Newest first. Add a section before tagging.
 
+## 0.14.0 - 2026-09-17
+
+- **Interactive mode can no longer fail silently.** The radio work runs on a background thread, and only seven specific kinds of error were ever handled; anything else vanished. Nothing was logged, no message appeared, and the power-cycle dialog stayed on screen for ever, so from the operator's side the tool simply died the moment the radio was power-cycled, with nothing to report to anybody. Every failure is now caught wherever it happens.
+- **Every failure now leaves something you can send.** A crash report is written to the temporary directory (on Linux, `/tmp/tait-codeplug-crash-<timestamp>.log`), naming what the tool was doing, its version, the platform and the full error. The same report is printed to the terminal after the full-screen editor hands it back, which is the other half of why nothing was visible before: the editor owns the screen, so anything printed as the tool died went down with it. Intermittent faults are the ones that need this most, because the run that reproduces the problem is rarely the run you are watching.
+- **An error while drawing the screen is reported rather than fatal.** Progress updates and the code that displays a codeplug after a read both run on the interface thread, where a fault used to unwind the whole application instead of being shown.
+
 ## 0.13.0 - 2026-09-17
 
 - **`apt install tait-codeplug` now works**, on Debian, Ubuntu and Raspberry Pi OS, for `amd64`, `arm64` and `armhf`. Three lines to add the [packet-net apt repository](https://github.com/packet-net/apt) and it installs like any other package, and `apt upgrade` keeps it current along with everything else on the machine; the README has the lines. The package is the same self-contained single-file binary as the release asset for that architecture, built by the same publish with the same flags, so nothing needs .NET installed. A release now attaches the three `.deb` files as assets too, for installing one by hand.

@@ -73,6 +73,15 @@ internal static class Tui
 
     private static DateTime _lastInputUtc = DateTime.UtcNow;
 
+    /// <summary>
+    /// Failures recorded during the session, echoed to stderr once the terminal has been handed back.
+    /// Written to from the worker thread as well as the UI thread, hence the lock.
+    /// </summary>
+    private static readonly List<string> Reports = [];
+
+    /// <summary>The process-wide handler is added once, however many times the screen is opened.</summary>
+    private static bool _lastResortInstalled;
+
     /// <param name="initial">A codeplug to open on, or null to start empty.</param>
     /// <param name="source">Where <paramref name="initial"/> came from, for the log line.</param>
     /// <param name="driver">A Terminal.Gui driver name to force, or null to let it choose. See
@@ -80,6 +89,8 @@ internal static class Tui
     internal static int Run(CodeplugImage? initial = null, string? source = null, string? driver = null)
     {
         _app = Application.Create();
+        bool fatal = false;
+        InstallLastResortHandler();
         try
         {
             if (driver is not null)
@@ -108,6 +119,16 @@ internal static class Tui
             SetBusy(false, StatusText());
             _app.Run(_window);
         }
+        catch (Exception ex)
+        {
+            // Last line of defence. Anything that gets here has already taken the screen down, so the
+            // only thing left to do is make sure it is written somewhere before the process ends.
+            // Deliberately catches everything: a fault that kills the tool is exactly the one worth
+            // reporting, and rethrowing would hand the user an unhandled-exception trace printed into
+            // a terminal that has just been reset, which is where the last one went.
+            Record("running the interactive screen", ex);
+            fatal = true;
+        }
         finally
         {
             // The loop rate is a static on the library, so hand it back as we found it rather than
@@ -120,7 +141,10 @@ internal static class Tui
             _app.Dispose();
         }
 
-        return 0;
+        // The terminal is ours again, so anything recorded while the screen was up can finally be
+        // said out loud. This is the half of the reporting a user actually sees.
+        EchoReports();
+        return fatal ? 2 : 0;
     }
 
     /// <summary>
@@ -626,7 +650,7 @@ internal static class Tui
     }
 
     /// <summary>Progress arrives on the worker thread; everything it touches lives on the UI thread.</summary>
-    private static void OnProgress(object? sender, ProgrammerProgress p) => _app.Invoke(() => ApplyProgress(p));
+    private static void OnProgress(object? sender, ProgrammerProgress p) => OnUiThread(() => ApplyProgress(p));
 
     private static void ApplyProgress(ProgrammerProgress p)
     {
@@ -689,7 +713,9 @@ internal static class Tui
             try
             {
                 T result = work();
-                _app.Invoke(() =>
+                // onSuccess decodes and displays what came back, so it is as capable of throwing as
+                // the radio work was, and it runs on the UI thread where an escape is fatal.
+                OnUiThread(() =>
                 {
                     FinishRadioOperation();
                     onSuccess(result);
@@ -699,26 +725,127 @@ internal static class Tui
             catch (OperationCanceledException)
             {
                 // Cancelling is a decision, not a fault: no dialog, and the prompt is already gone.
-                _app.Invoke(() =>
+                OnUiThread(() =>
                 {
                     FinishRadioOperation();
                     SetBusy(false, StatusText());
                 });
             }
-            catch (Exception ex) when (ex is IOException or TimeoutException or InvalidOperationException
-                                       or ArgumentException or UnauthorizedAccessException or FormatException
-                                       or NotSupportedException)
+            catch (Exception ex)
             {
-                _app.Invoke(() =>
+                // Everything, not a list of the failures we thought of. This used to catch seven
+                // specific types, and anything else escaped into a discarded Task: nothing was
+                // logged, no dialog appeared, the power-cycle prompt was never dismissed and the
+                // runtime swallowed the exception when the task was collected. The tool looked like
+                // it had died the moment the radio was power-cycled, with nothing to show anyone.
+                // A radio error and a bug in our own code both have to end up on the screen.
+                Record("talking to the radio", ex);
+                OnUiThread(() =>
                 {
                     FinishRadioOperation();
                     Log($"error: {ex.Message}");
                     SetBusy(false, StatusText());
-                    Error("Radio error", ex.Message);
+                    Error("Radio error", Describe(ex));
                 });
             }
         });
     }
+
+    /// <summary>
+    /// Run <paramref name="action"/> on the UI thread without letting a failure in it take the
+    /// application down. <c>IApplication.Invoke</c> queues onto the main loop, so an exception thrown
+    /// inside one is on the UI thread and outside whatever try/catch queued it: it unwinds the main
+    /// loop instead, which is a silent death rather than an error message.
+    /// </summary>
+    private static void OnUiThread(Action action)
+    {
+        try
+        {
+            _app.Invoke(() =>
+            {
+                try
+                {
+                    action();
+                }
+                catch (Exception ex)
+                {
+                    Record("updating the screen", ex);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            // Queueing itself can fail if the application is already going away, which is precisely
+            // when a worker is most likely to be reporting something. The report is recorded before
+            // this is ever called, so losing the on-screen half of it costs nothing.
+            Record("handing work to the screen", ex);
+        }
+    }
+
+    /// <summary>
+    /// Catch what nothing else can: a failure on a thread we did not start, which ends the process
+    /// without unwinding through any of our own handlers. Nothing can be shown at that point and the
+    /// stderr echo will not run, but the report still reaches a file, which is the half that matters
+    /// for an intermittent fault somebody has to report afterwards.
+    /// </summary>
+    private static void InstallLastResortHandler()
+    {
+        if (_lastResortInstalled)
+        {
+            return;
+        }
+
+        _lastResortInstalled = true;
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            if (e.ExceptionObject is Exception ex)
+            {
+                Record("an unhandled failure", ex);
+            }
+        };
+    }
+
+    /// <summary>Record a failure durably: to a file that outlives the process, and to the list echoed
+    /// to stderr on the way out. Safe to call from any thread, and never throws.</summary>
+    private static void Record(string context, Exception exception)
+    {
+        DateTimeOffset now = DateTimeOffset.Now;
+        string report = CrashReport.Format(context, exception, now);
+        string? path = CrashReport.Write(report, now);
+
+        lock (Reports)
+        {
+            Reports.Add(path is null ? report : $"{report}(this report was also written to {path})\n");
+        }
+    }
+
+    /// <summary>Print anything recorded to stderr, once the terminal has been restored.</summary>
+    private static void EchoReports()
+    {
+        lock (Reports)
+        {
+            foreach (string report in Reports)
+            {
+                Console.Error.WriteLine();
+                Console.Error.Write(report);
+            }
+
+            if (Reports.Count > 0)
+            {
+                Console.Error.WriteLine(
+                    "Please report this at https://github.com/M0LTE/tait-codeplug/issues with the text above.");
+            }
+
+            Reports.Clear();
+        }
+    }
+
+    /// <summary>What to put in front of someone: the message, and the type when the message alone does
+    /// not say what went wrong (a NullReferenceException's does not).</summary>
+    private static string Describe(Exception exception) =>
+        string.IsNullOrWhiteSpace(exception.Message)
+            ? exception.GetType().Name
+            : $"{exception.Message}\n\n({exception.GetType().Name}; details written to the crash report on exit.)";
 
     /// <summary>Take the prompt and the bar down, whatever the operation's outcome was.</summary>
     private static void FinishRadioOperation()
