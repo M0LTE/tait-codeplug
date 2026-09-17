@@ -4,7 +4,7 @@ What changed in each release. The section for a version is lifted into that vers
 
 Newest first. Add a section before tagging.
 
-## 0.13.0 - unreleased
+## 0.13.0 - 2026-09-17
 
 - **`apt install tait-codeplug` now works**, on Debian, Ubuntu and Raspberry Pi OS, for `amd64`, `arm64` and `armhf`. Three lines to add the [packet-net apt repository](https://github.com/packet-net/apt) and it installs like any other package, and `apt upgrade` keeps it current along with everything else on the machine; the README has the lines. The package is the same self-contained single-file binary as the release asset for that architecture, built by the same publish with the same flags, so nothing needs .NET installed. A release now attaches the three `.deb` files as assets too, for installing one by hand.
 - **`--upgrade` refuses on a copy installed from apt**, and says to run `sudo apt update && sudo apt install --only-upgrade tait-codeplug` instead. It used to overwrite whatever binary was running, which for a packaged copy means writing over a file dpkg owns: the package database would then describe something that is no longer there, and the next apt upgrade would put the old version back over the top. A copy you downloaded yourself still upgrades itself exactly as before, including one sitting in `/usr/local/bin` on a machine that also has the package.
