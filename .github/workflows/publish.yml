@@ -229,20 +229,49 @@ jobs:
             sed "s/__VER__/${VERSION}/g; s#__REPO__#${REPO}#g" .github/release-notes.md
           } > release/NOTES.md
           cat release/NOTES.md
-          gh release create "v${VERSION}" \
-            release/tait-codeplug-"${VERSION}"-linux-x64 \
-            release/tait-codeplug-"${VERSION}"-linux-arm64 \
-            release/tait-codeplug-"${VERSION}"-linux-arm \
-            release/tait-codeplug-"${VERSION}"-win-x64.exe \
-            release/tait-codeplug-"${VERSION}"-osx-x64 \
-            release/tait-codeplug-"${VERSION}"-osx-arm64 \
-            release/tait-codeplug_"${VERSION}"_amd64.deb \
-            release/tait-codeplug_"${VERSION}"_arm64.deb \
-            release/tait-codeplug_"${VERSION}"_armhf.deb \
-            release/SHA256SUMS \
-            --repo "${REPO}" \
-            --title "tait-codeplug ${VERSION}" \
-            --notes-file release/NOTES.md
+          # Create the release empty, attach the assets one at a time, then publish it.
+          #
+          # This used to be a single `gh release create` with all ten assets on it. That is about
+          # 340 MB in one command, and on v0.14.0 it failed twice with `HTTP 500: Error saving
+          # asset` from uploads.github.com, on a different asset each time. One flaky upload took
+          # the entire release with it, after the NuGet push had already happened, leaving a tag
+          # with no release behind it.
+          #
+          # A draft is deliberate rather than tidiness: packet-net/apt indexes whatever
+          # `releases/latest` carries, and `releases/latest` ignores drafts. Publishing the release
+          # before its .deb files are attached would briefly advertise a version whose packages are
+          # missing, and an apt rebuild landing in that window would index it.
+          if gh release view "v${VERSION}" --repo "${REPO}" >/dev/null 2>&1; then
+            echo "release v${VERSION} already exists; refreshing its notes and assets."
+            gh release edit "v${VERSION}" --repo "${REPO}" \
+              --title "tait-codeplug ${VERSION}" --notes-file release/NOTES.md
+          else
+            gh release create "v${VERSION}" --repo "${REPO}" --draft \
+              --title "tait-codeplug ${VERSION}" --notes-file release/NOTES.md
+          fi
+
+          # --clobber so a re-run repairs a partial upload rather than starting again, which is the
+          # state a failure here leaves behind.
+          for asset in release/tait-codeplug-"${VERSION}"-* \
+                       release/tait-codeplug_"${VERSION}"_*.deb \
+                       release/SHA256SUMS; do
+            name="$(basename "$asset")"
+            for attempt in 1 2 3 4 5; do
+              if gh release upload "v${VERSION}" "$asset" --repo "${REPO}" --clobber; then
+                echo "uploaded $name"
+                break
+              fi
+              if [ "$attempt" = 5 ]; then
+                echo "::error::could not upload $name after 5 attempts"
+                exit 1
+              fi
+              echo "::warning::upload of $name failed (attempt $attempt of 5); retrying"
+              sleep "$((attempt * 10))"
+            done
+          done
+
+          # Everything is attached, so it can go live and be seen by releases/latest.
+          gh release edit "v${VERSION}" --repo "${REPO}" --draft=false
 
       - name: Tell the apt repo to rebuild
         # Last, and only after gh release create has succeeded: packet-net/apt indexes whatever
