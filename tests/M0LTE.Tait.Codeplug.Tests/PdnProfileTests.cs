@@ -13,6 +13,7 @@ namespace M0LTE.Tait.Codeplug.Tests;
 public class PdnProfileTests
 {
     private const string PacketAudioBlock = Fixtures.PacketAudioBlock;
+    private const string PacketAudioBlockT12 = Fixtures.PacketAudioBlockT12;
 
     private const string PacketAudioBlockR2 = Fixtures.PacketAudioBlockR2;
 
@@ -93,6 +94,8 @@ public class PdnProfileTests
         f.CommandModeFlowControl.Should().Be(DataFlowControl.None);
         f.GetRxTapOutNode().Should().Be(2);
         f.TapOutUnmute.Should().Be(TapOutUnmute.ExceptOnPtt);
+        // T13, not the T12 the aux-connector profiles use: a different board with a different
+        // divider, and not ours to re-calibrate. See CodeplugFields.ModemTapInNode.
         f.GetEptt1TapInNode().Should().Be(13);
         // the packet-defaults audio block with the tap-out point moved to R2, byte for byte
         Convert.ToHexString(f.Image.Require(0x3B, 0).Data).Should().Be(PacketAudioBlockR2);
@@ -118,6 +121,15 @@ public class PdnProfileTests
     /// produce the CPS's own bytes for that configuration, in all three records it writes - whether it
     /// is applied on its own or as the part of <c>pdn-basic</c> that carries it. The two codeplugs the
     /// pair comes from differ in exactly these three records and nothing else.
+    /// <para>
+    /// <b>One byte of this is no longer a CPS capture.</b> The PTT table and the digital I/O table
+    /// still are. The audio block is asserted against
+    /// <see cref="Fixtures.PacketAudioBlockT12"/>, which is the CPS's block with the tap-in byte
+    /// changed from T13 to T12 by the documented encoding rather than read off a save - see
+    /// <see cref="CodeplugFields.ModemTapInNode"/>. Everything else in the block is still the CPS's,
+    /// so this still catches any other drift; it just cannot vouch for that one byte. Take a CPS save
+    /// of a T12 configuration and this becomes a byte-exact target again.
+    /// </para>
     /// </summary>
     [Fact]
     public void The_aux_connector_wiring_reproduces_the_cps_save_byte_for_byte()
@@ -129,7 +141,7 @@ public class PdnProfileTests
             profile(f);
 
             Convert.ToHexString(f.Image.Require(0x19, 0).Data).Should().Be(Fixtures.PacketPttTable);
-            Convert.ToHexString(f.Image.Require(0x3B, 0).Data).Should().Be(Fixtures.PacketAudioBlock);
+            Convert.ToHexString(f.Image.Require(0x3B, 0).Data).Should().Be(Fixtures.PacketAudioBlockT12);
             Convert.ToHexString(f.Image.SectionBytes(0x37)).Should().Be(Fixtures.PacketDigitalIoTable);
         }
     }
@@ -365,10 +377,11 @@ public class PdnProfileTests
 
     private static void AudioAndPttAreWiredForTheAuxConnector(CodeplugFields f)
     {
-        Convert.ToHexString(f.Image.Require(0x3B, 0).Data).Should().Be(PacketAudioBlock);
+        Convert.ToHexString(f.Image.Require(0x3B, 0).Data).Should().Be(PacketAudioBlockT12);
         f.GetRxTapOutNode().Should().Be(1);                 // Rx tap out R1
         f.TapOutUnmute.Should().Be(TapOutUnmute.ExceptOnPtt);
-        f.GetEptt1TapInNode().Should().Be(13);              // EPTT1 tap in T13
+        f.GetEptt1TapInNode().Should().Be(12);              // EPTT1 tap in T12, not the T13
+                                                           // the raw audio block carries
         f.RxTapOutInverted.Should().BeFalse();
         f.Eptt1TapInInverted.Should().BeFalse();
         f.GetDigitalIoRole(DigitalIoLine.AuxGpi1).Should().Be(DigitalIoRole.ExternalPtt1Input);

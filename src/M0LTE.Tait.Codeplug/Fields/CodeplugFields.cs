@@ -391,7 +391,11 @@ public sealed class CodeplugFields
     /// D-Split, unmute Except-on-PTT), EPTT1 row tap-in T13 (type A-Bypass In, unmute On-PTT, tap-out
     /// None type C-Bypass Out), Mic PTT and EPTT2 at defaults, all inversion disabled. The audio-IO
     /// block is self-contained, so applying this record configures the routing regardless of the rest of
-    /// the codeplug. The exact bytes were validated to reproduce a CPS save of that manual configuration.
+    /// the codeplug. The exact bytes were validated to reproduce a CPS save of that manual configuration,
+    /// which is why the tap-in stays T13 here: this writes the blessed block unchanged.
+    /// <see cref="ApplyAudioAndPtt"/> moves the tap to T12 afterwards, as a separate and visible step
+    /// rather than by editing a byte array that a CPS save is the authority for - see
+    /// <see cref="ModemTapInNode"/> for why T12.
     /// </summary>
     public void ApplyPacketAudioDefaults()
     {
@@ -399,6 +403,45 @@ public sealed class CodeplugFields
         Image.SetRecord(new CodeplugRecord(0x3B, 0, (byte[])PacketAudioRecord.Clone()));
         SetItemCount(0x3B, PacketAudioEntryCount);
     }
+
+    /// <summary>
+    /// The transmit tap the modem is injected at: <b>T12</b>, not T13.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>Why T12.</b> The two taps are the same tap in every respect the 3DK manual
+    /// specifies - identical 1.8 ms group delay, identical 14.8 ms from EPTT to full carrier with
+    /// valid modulation, identical modulation delay, one shared group-delay-distortion plot, and
+    /// both are past the limiter, the 3 kHz low-pass and pre-emphasis - with exactly one difference.
+    /// The transmit chain runs <c>modulator &lt;- T13 &lt;- deviation scaler &lt;- T12</c>, so a
+    /// signal injected at T12 passes through the deviation scaler and one injected at T13 does not.
+    /// That scaler is what makes T12's sensitivity track the channel spacing, which is the whole
+    /// point: <c>MMA-00011-01</c> p.112 says to use T12 "if not all the channels that the modem will
+    /// be communicating on have the same channel spacing or bandwidth", because "the signal levels
+    /// on these taps are automatically scaled to match the channel spacing".</para>
+    /// <para>T13 wants 0.29 Vp-p per kHz of deviation whatever the channel is. T12 wants 0.23 on a
+    /// 25 kHz channel and 0.46 on a 12.5 kHz one (Table 2.7). So one interface built for T12 is
+    /// correct at both spacings, and one built for T13 is correct at exactly one - which is how this
+    /// was found: a divider sized for 100 % of class on 12.5 kHz was delivering 49 % on a radio set
+    /// to 25 kHz, measured on air at 1.800 kHz peak against a 5.0 kHz class.</para>
+    /// <para><b>What it costs.</b> Two things, neither large. Passing through the deviation scaler
+    /// means T12's sensitivity depends on the radio's <i>deviation calibration</i> - the calibration
+    /// application's Tx Peak Deviation, 2500 / 4000 / 5000 Hz by default per bandwidth - where T13
+    /// bypasses it and is calibration-independent. And an interface whose divider was sized for T13
+    /// changes level when the tap moves: on 25 kHz it gains about 2 dB, on 12.5 kHz it loses about
+    /// 4 dB. <b>The tap and the divider are one decision, not two.</b> See pdn-soundmodem's
+    /// <c>docs/hardware/tait-tm8100-cm108.md</c>, whose variant A is this tap with the matching
+    /// resistors.</para>
+    /// <para><b>Confirmed on hardware, 2026-09-18.</b> Two TM8110s were programmed with
+    /// <c>patch txtap T12</c> and the resulting deviation measured off air with an SDRplay RSP1.
+    /// The radio accepts 0x38, the tap moves, and the sensitivity changes by <b>+2.12 dB measured
+    /// against +2.01 dB predicted</b> from Tait's 0.29 and 0.23 Vp-p per kHz - so both the encoding
+    /// and the auto-scaling figure hold, to a tenth of a decibel. THD at the new level was 0.11 %.
+    /// What is still <i>not</i> established is byte-for-byte equivalence with a CPS save of a T12
+    /// configuration, because no such save has been taken: this says the radio does the right thing,
+    /// not that the CPS would write the identical file. Take that save and the test fixture becomes
+    /// a byte-exact target again.</para>
+    /// </remarks>
+    public const int ModemTapInNode = 12;
 
     private const int PacketAudioEntryCount = 4;
 
@@ -412,7 +455,8 @@ public sealed class CodeplugFields
     /// Wire the modem to the auxiliary connector: the "audio-and-ptt" profile, and the wiring a
     /// soundcard or TNC deployment on that connector uses. It applies the
     /// <see cref="ApplyPacketAudioDefaults"/> audio block (Rx tap-out R1, type Split so the speaker
-    /// keeps working, unmute Except on PTT; EPTT1 tap-in T13), programs AUX_GPI1 as an active-low
+    /// keeps working, unmute Except on PTT; EPTT1 tap-in <b>T12</b> rather than the T13 the audio
+    /// block itself carries, see <see cref="ModemTapInNode"/>), programs AUX_GPI1 as an active-low
     /// External PTT 1 input - the line the modem's PTT keys - and sets External PTT 1 to transmit
     /// Data from the Audio Tap In rather than Voice from the aux mic, so keying that line actually
     /// puts the modem's audio on air.
@@ -435,6 +479,7 @@ public sealed class CodeplugFields
     public void ApplyAudioAndPtt()
     {
         ApplyPacketAudioDefaults();
+        SetEptt1TapInNode(ModemTapInNode);
         SetDigitalIoRole(DigitalIoLine.AuxGpi1, DigitalIoRole.ExternalPtt1Input);
         SetPttTransmission(PttSource.ExternalPtt1, PttTransmission.DataFromAudioTapIn);
         SetFunctionKeyRole(FunctionKey.F1, FunctionKeyRole.SquelchOverride);
@@ -506,7 +551,7 @@ public sealed class CodeplugFields
     /// routes the audio for a sound-card modem (Rx tap-out <b>R2</b>, flat discriminator audio ahead
     /// of de-emphasis and filtering, type Split so the speaker keeps working, unmuted Except on PTT so
     /// the modem hears every burst from its first millisecond and does its own carrier detect - the
-    /// muting Tait's 3DK manual specifies for an external modem; EPTT1 tap-in T13), and programs
+    /// muting Tait's 3DK manual specifies for an external modem; EPTT1 tap-in T12), and programs
     /// IOP_GPIO1 as an active-low External PTT 1 input, the line the board's PTT transistor pulls
     /// low. The audio block is the <see cref="ApplyPacketAudioDefaults"/> record with the tap-out
     /// point moved to R2. Because the keying line moves onto the options connector it also releases
@@ -522,6 +567,14 @@ public sealed class CodeplugFields
         DataPort = DataPort.InternalOptions;
         CommandModeFlowControl = DataFlowControl.None;
         ApplyPacketAudioDefaults();
+        // Deliberately back to T13, and deliberately spelled out rather than left to the fact that
+        // re-applying the audio defaults happens to undo what ApplyAudioAndPtt did. The internal
+        // options board is a different interface with a different divider, designed by somebody
+        // else, and moving its tap would change its deviation by the same 2 dB up on a 25 kHz
+        // channel and 4 dB down on a 12.5 kHz one that it changes the aux-connector board's. Doing
+        // that to a design whose component values are not ours to assume is not a change to make
+        // blind. See ModemTapInNode for what T12 buys and what it would cost here.
+        SetEptt1TapInNode(13);
         SetRxTapOutNode(2);
         SetDigitalIoRole(DigitalIoLine.AuxGpi1, DigitalIoRole.Unassigned);
         SetDigitalIoRole(DigitalIoLine.IopGpio1, DigitalIoRole.ExternalPtt1Input);
