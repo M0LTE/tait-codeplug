@@ -168,7 +168,7 @@ radio already provisioned for its environment. See the
 They nest, so apply the one profile that describes the radio and it carries the rest.
 
 `audio-and-ptt` is the modem wiring for the **auxiliary connector** - a soundcard interface or TNC: Rx
-tap-out R1, type Split, unmuted except on PTT; EPTT1 tap-in T13; AUX_GPI1 as an active-low External PTT
+tap-out R1, type Split, unmuted except on PTT; EPTT1 tap-in **T12**; AUX_GPI1 as an active-low External PTT
 1 input; and External PTT 1 transmitting Data from the Audio Tap In instead of Voice from the aux mic.
 Those three records come out byte-identical to a CPS save of the same configuration on a default TM8100
 codeplug. `pdn-basic` and `pdn-extra` both include it, so this one is for a radio that needs the wiring

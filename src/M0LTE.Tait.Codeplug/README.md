@@ -71,7 +71,7 @@ settings are already right, or one being set up for an external modem without th
 
 - **`audio-and-ptt`** wires the modem to the **auxiliary connector**: the
   `audio packet-defaults` block (Rx tap-out **R1**, type Split so the speaker keeps working, unmute
-  **Except on PTT**; EPTT1 tap-in **T13**), **AUX_GPI1 as an active-low External PTT 1 input** (the line
+  **Except on PTT**; EPTT1 tap-in **T12**), **AUX_GPI1 as an active-low External PTT 1 input** (the line
   a soundcard interface or TNC keys), and **External PTT 1 transmitting Data from the Audio Tap In**
   rather than Voice from the aux mic - without that last one the line keys the radio but puts the wrong
   audio on air. Those three records - 0x19, 0x37 and 0x3B - come out byte-identical to a CPS save of the
@@ -96,7 +96,7 @@ settings are already right, or one being set up for an external modem without th
   sound-card plus serial interface on the internal options connector). On top of `pdn-extra` it moves the
   data port off Mic and onto Internal Options with no flow control, routes the audio for a sound-card modem (Rx
   tap-out **R2** split, flat discriminator audio, unmuted Except on PTT so the modem hears every burst
-  from its first millisecond and does its own carrier detect; EPTT1 tap-in T13 - the `audio
+  from its first millisecond and does its own carrier detect; EPTT1 tap-in T12 - the `audio
   packet-defaults` block with the tap point moved to R2), and programs **IOP_GPIO1 as an active-low External PTT 1 input**, the
   line the board's PTT transistor pulls low. Because the keying line moves onto the options connector
   it also **releases AUX_GPI1** back to Unassigned - the input `audio-and-ptt`, and so `pdn-basic`,

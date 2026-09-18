@@ -42,6 +42,22 @@ internal static class Fixtures
     /// <summary>The same block with the tap-out point moved to R2 for the internal options board.</summary>
     public const string PacketAudioBlockR2 = "000100C2088000004000003A0020004000001000";
 
+    /// <summary>
+    /// The packet audio block with the EPTT1 tap-in moved from T13 to <b>T12</b>, which is what the
+    /// profiles write: byte 11 is 0x38 rather than 0x3A.
+    /// </summary>
+    /// <remarks>
+    /// <b>This one is NOT from a CPS save.</b> Every other constant in this file is a byte-exact
+    /// capture of what the CPS writes, and that is what makes them worth asserting against. This is
+    /// <see cref="PacketAudioBlock"/> with one byte changed according to the documented encoding,
+    /// <c>payload[11] = 0x20 | (node &lt;&lt; 1)</c>, which is pinned against a CPS save of T13 and
+    /// against the literal node numbering the field uses for T3, T5 and T8. T12 following the same
+    /// rule is a sound inference and it is still an inference. Replace this with a real CPS save of a
+    /// T12 configuration when one is taken, and until then do not describe anything asserting against
+    /// it as byte-for-byte CPS validated.
+    /// </remarks>
+    public const string PacketAudioBlockT12 = "000100C10880000040000038" + "0020004000001000";
+
     // The three Key Settings records as a factory-default TM8100 (DBVer 0094) holds them, and as the
     // CPS saves them once F1 alone is set to Squelch Override. Another matched before/after of exactly
     // one CPS edit: those two codeplugs differ in these three records and nothing else.
