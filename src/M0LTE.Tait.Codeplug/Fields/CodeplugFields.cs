@@ -431,11 +431,15 @@ public sealed class CodeplugFields
     /// 4 dB. <b>The tap and the divider are one decision, not two.</b> See pdn-soundmodem's
     /// <c>docs/hardware/tait-tm8100-cm108.md</c>, whose variant A is this tap with the matching
     /// resistors.</para>
-    /// <para><b>Unverified, deliberately recorded.</b> <see cref="SetEptt1TapInNode"/>'s encoding,
-    /// <c>payload[11] = 0x20 | (node &lt;&lt; 1)</c>, is pinned against a CPS save of T13 only.
-    /// Node 12 writes 0x38 where T13 writes 0x3A, which follows the documented scheme and the
-    /// literal node numbering the field uses everywhere else, but has not itself been byte-checked
-    /// against a CPS save. Confirm the deviation with a Bessel null after programming a radio.</para>
+    /// <para><b>Confirmed on hardware, 2026-09-18.</b> Two TM8110s were programmed with
+    /// <c>patch txtap T12</c> and the resulting deviation measured off air with an SDRplay RSP1.
+    /// The radio accepts 0x38, the tap moves, and the sensitivity changes by <b>+2.12 dB measured
+    /// against +2.01 dB predicted</b> from Tait's 0.29 and 0.23 Vp-p per kHz - so both the encoding
+    /// and the auto-scaling figure hold, to a tenth of a decibel. THD at the new level was 0.11 %.
+    /// What is still <i>not</i> established is byte-for-byte equivalence with a CPS save of a T12
+    /// configuration, because no such save has been taken: this says the radio does the right thing,
+    /// not that the CPS would write the identical file. Take that save and the test fixture becomes
+    /// a byte-exact target again.</para>
     /// </remarks>
     public const int ModemTapInNode = 12;
 

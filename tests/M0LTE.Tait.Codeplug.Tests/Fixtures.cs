@@ -51,10 +51,12 @@ internal static class Fixtures
     /// capture of what the CPS writes, and that is what makes them worth asserting against. This is
     /// <see cref="PacketAudioBlock"/> with one byte changed according to the documented encoding,
     /// <c>payload[11] = 0x20 | (node &lt;&lt; 1)</c>, which is pinned against a CPS save of T13 and
-    /// against the literal node numbering the field uses for T3, T5 and T8. T12 following the same
-    /// rule is a sound inference and it is still an inference. Replace this with a real CPS save of a
-    /// T12 configuration when one is taken, and until then do not describe anything asserting against
-    /// it as byte-for-byte CPS validated.
+    /// against the literal node numbering the field uses for T3, T5 and T8. Two TM8110s have since
+    /// been programmed with it and behave exactly as T12 should - the measured sensitivity change was
+    /// +2.12 dB against +2.01 dB predicted - so the byte is right in the sense that matters. It is
+    /// still not a CPS capture, which is a different claim: nothing here establishes that a CPS save
+    /// of a T12 configuration would be byte-identical overall. Replace this with a real save when one
+    /// is taken, and until then do not describe anything asserting against it as CPS validated.
     /// </remarks>
     public const string PacketAudioBlockT12 = "000100C10880000040000038" + "0020004000001000";
 
