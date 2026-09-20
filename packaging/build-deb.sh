@@ -42,6 +42,11 @@ esac
 
 # dpkg-deb ships in the Essential `dpkg` package, so this only trips on a non-Debian host.
 command -v dpkg-deb >/dev/null || { echo "dpkg-deb not found - this needs a Debian-family host" >&2; exit 3; }
+# readelf reads the library version floors out of the published binary (see the Depends
+# section below). Refuse to build rather than quietly fall back to an unversioned Depends:
+# understating what the package needs is the defect that block exists to fix, and a silent
+# fallback would reintroduce it on any machine that happens to be missing binutils.
+command -v readelf >/dev/null || { echo "readelf not found - install binutils" >&2; exit 3; }
 
 # Directories inherit the caller's umask, and a developer box set to 002 produces
 # group-writable 0775 directories inside the package, which is not what a .deb should ship
@@ -109,6 +114,98 @@ chmod 0644 "$STAGE/root$DOCDIR/changelog.Debian.gz"
 
 INSTALLED_SIZE="$(du -k -s --exclude=DEBIAN "$STAGE/root" | cut -f1)"
 
+# --- library version floors, read from the ELFs we just published -------------
+# The executable is Microsoft's `singlefilehost` with our payload bundled into it, so its
+# symbol-version floor is whatever .NET's runtime pack for this RID was built against, not
+# anything this repo controls, and it moves without warning: .NET 10 raised linux-arm from
+# glibc 2.16 to 2.34, which is above the 2.31 that bullseye and 32-bit Raspberry Pi OS ship.
+# While Depends: said a bare `libc6`, apt installed that armhf package onto bullseye quite
+# happily and the binary then died in the dynamic loader with "version `GLIBC_2.33' not
+# found". So derive the floor from the ELF rather than asserting one here, and let apt refuse
+# the install with a reason a user can act on. Deriving it also means the next runtime pack
+# that moves the floor is handled by the build instead of by another bug report.
+#
+# Every ELF the package ships, not just the executable. Today that is exactly one file, because
+# IncludeNativeLibrariesForSelfExtract bundles the native shims inside the single file (see the
+# layout note at the top), but reading only the executable would be right by luck rather than by
+# construction: a shim that publishes loose beside the binary is linked separately and does not
+# share its floor. The sibling pdn-soundmodem package is the worked example - its
+# libe_sqlite3.so needs glibc 2.34 on amd64 while the executable beside it needs only 2.27, so
+# reading the executable alone understated that package and merely deferred this same crash to
+# the first dlopen. Scanning the staged tree is what dpkg-shlibdeps would do and costs nothing.
+#
+# Detect ELF by its magic bytes rather than shelling out to `file`, which is not Essential and
+# need not exist on a build host.
+#
+# The limit of the method, so nobody assumes more of it than it gives: the shims bundled inside
+# the single file are compressed blobs, invisible to readelf, and .NET extracts and dlopens them
+# at run time. Their floors were checked by hand from a non-single-file publish of all three
+# RIDs and none exceeds the host's: linux-x64 and linux-arm64 top out at GLIBC_2.27 and
+# GLIBCXX_3.4.22, linux-arm at GLIBC_2.34 and GLIBCXX_3.4.30, which is exactly what the host
+# declares. Worth re-checking by hand if a package reference ever adds a native of its own, as
+# Terminal.Gui's libonigwrap.so already does at a harmless GLIBC_2.14.
+elf_files() {
+  find "$STAGE/root" -type f -print | while IFS= read -r f; do
+    [ "$(od -An -tx1 -N4 "$f" 2>/dev/null | tr -d ' \n')" = "7f454c46" ] && printf '%s\n' "$f"
+  done
+}
+
+# .gnu.version_r is the authoritative record of which symbol versions of which libraries the
+# loader must satisfy. Take the highest of one family (GLIBC, GLIBCXX) across the lot. "GLIBC_"
+# cannot match inside "GLIBCXX_", so the two families do not overlap.
+max_needed() {
+  local family="$1" max="" v f
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    v="$(readelf --version-info "$f" 2>/dev/null \
+      | awk '/Version needs section/,0' \
+      | grep -oE "${family}_[0-9][0-9.]*" \
+      | sed "s/^${family}_//" \
+      | sort -uV \
+      | tail -1)"
+    [ -n "$v" ] && max="$(printf '%s\n%s\n' "$max" "$v" | sort -uV | tail -1)"
+  done <<EOF
+$(elf_files)
+EOF
+  printf '%s' "$max"
+}
+
+# A glibc symbol version is the glibc release that introduced it, and libc6's package version
+# is that same release, so this maps straight onto a Debian version constraint.
+GLIBC_MIN="$(max_needed GLIBC)"
+GLIBCXX_MIN="$(max_needed GLIBCXX)"
+[ -n "$GLIBC_MIN" ] || { echo "could not read a GLIBC floor from the staged package" >&2; exit 4; }
+[ -n "$GLIBCXX_MIN" ] || { echo "could not read a GLIBCXX floor from the staged package" >&2; exit 4; }
+
+# libstdc++ versions its symbols by C++ ABI, not by package version, so this needs a table.
+# Anchors measured against the distributions themselves: Debian 10 ships GCC 8 and tops out
+# at 3.4.25, Debian 11 / GCC 10 at 3.4.28, Debian 12 / GCC 12 at 3.4.30, Debian 13 / GCC 14
+# at 3.4.33. Unmeasured points round up to the next anchor, because the failure modes are not
+# symmetric: too high refuses an install that would have worked and says why, too low ships
+# the loader crash this whole block exists to prevent. An unknown value is a new GCC ABI
+# nobody has checked, so stop and make someone extend the table.
+case "$GLIBCXX_MIN" in
+  3.4|3.4.[0-9]|3.4.1[0-9]|3.4.2[01]) STDCXX_MIN=5 ;;
+  3.4.22)        STDCXX_MIN=6 ;;
+  3.4.23|3.4.24) STDCXX_MIN=7 ;;
+  3.4.25)        STDCXX_MIN=8 ;;
+  3.4.26)        STDCXX_MIN=9 ;;
+  3.4.27|3.4.28) STDCXX_MIN=10 ;;
+  3.4.29)        STDCXX_MIN=11 ;;
+  3.4.30)        STDCXX_MIN=12 ;;
+  3.4.31|3.4.32) STDCXX_MIN=13 ;;
+  3.4.33)        STDCXX_MIN=14 ;;
+  3.4.34)        STDCXX_MIN=15 ;;
+  *) echo "unknown GLIBCXX_$GLIBCXX_MIN - extend the table in $0" >&2; exit 4 ;;
+esac
+
+# Only libc6 and libstdc++6 get a constraint, and both for the same reason: they are the two
+# the floor actually moved on. libgcc-s1 is left unversioned because what we ship asks it only
+# for GCC_3.0, GCC_3.5 and GCC_4.2.0, which every distribution in scope has carried for twenty
+# years. zlib1g and the libicu alternation are not in any shipped DT_NEEDED at all, so
+# .gnu.version_r says nothing about them and there is nothing here to derive.
+echo "floors for $ARCH: libc6 >= $GLIBC_MIN, libstdc++6 >= $STDCXX_MIN (GLIBCXX_$GLIBCXX_MIN)"
+
 # Depends: the native prerequisites a self-contained .NET app still needs from the system.
 # ICU is the awkward one - Debian stamps the soname into the package name, so there is no
 # stable name to depend on and the list has to be an alternation that dpkg satisfies with
@@ -122,7 +219,7 @@ Version: $VERSION
 Architecture: $ARCH
 Maintainer: Tom Fanning M0LTE <tom@m0lte.uk>
 Installed-Size: $INSTALLED_SIZE
-Depends: libc6, libgcc-s1, libstdc++6, zlib1g, ca-certificates, libicu76 | libicu74 | libicu72 | libicu71 | libicu70 | libicu67
+Depends: libc6 (>= $GLIBC_MIN), libgcc-s1, libstdc++6 (>= $STDCXX_MIN), zlib1g, ca-certificates, libicu76 | libicu74 | libicu72 | libicu71 | libicu70 | libicu67
 Section: hamradio
 Priority: optional
 Homepage: https://github.com/M0LTE/tait-codeplug
