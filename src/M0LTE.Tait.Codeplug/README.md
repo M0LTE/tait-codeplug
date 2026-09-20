@@ -59,9 +59,9 @@ CodeplugImage live = programmer.ReadImage();
 Composable patches that *upgrade a radio to the Packet.NET feature set* without touching its RF
 config (channels, frequencies, power), so they layer safely onto a radio already provisioned for its
 environment. They change the data record (0x09), the audio block (0x3B), the digital I/O lines they
-program (0x37), the PTT table (0x19) and the three Key Settings items (0x0F, 0x03, 0x18). For a radio
-arriving from a foreign application, prefer a clean flash of a full codeplug first, then apply a
-profile.
+program (0x37), the PTT table (0x19), the three Key Settings items (0x0F, 0x03, 0x18) and the network
+table (0x15). For a radio arriving from a foreign application, prefer a clean flash of a full codeplug
+first, then apply a profile.
 
 They nest: `audio-and-ptt` is the aux-connector modem wiring, `pdn-basic` is that plus the CCDI
 command channel, `pdn-extra` is that plus the FFSK modem, and `pdn-internal` is `pdn-extra` moved onto
@@ -76,8 +76,10 @@ settings are already right, or one being set up for an external modem without th
   rather than Voice from the aux mic - without that last one the line keys the radio but puts the wrong
   audio on air. Those three records - 0x19, 0x37 and 0x3B - come out byte-identical to a CPS save of the
   same configuration on a default TM8100 codeplug. It never touches the data record. It also programs
-  the front-panel **F1 key to Squelch Override** (see [Function keys](#function-keys)) - not part of the
-  wiring, but wanted on every radio these profiles provision, and this is the one they all pass through.
+  the front-panel **F1 key to Squelch Override** (see [Function keys](#function-keys)) and winds the
+  **Tx timer out to its 250-second maximum** (see [Tx timer](#tx-timer)) - neither is part of the
+  wiring, but both are wanted on every radio these profiles provision, and this is the one they all
+  pass through.
 - **`pdn-basic`** is `audio-and-ptt` plus the CCDI command channel that carries `Packet.Radio.Tait`'s
   telemetry and control: averaged/instantaneous RSSI, forward/reverse power, PA temperature,
   status/identity, transmitter keying, and the PROGRESS stream for carrier-sense (DCD) and external-PTT
@@ -158,6 +160,30 @@ Squelch Override onto another key.
 
 `GetFunctionKeyRole` / `SetFunctionKeyRole` take a `FunctionKey`; the console names them `key.f1` ..
 `key.f4`. `get radio.m8p | grep key.` lists all four; `set radio.m8p key.f1 SquelchOverride` sets one.
+
+## Tx timer
+
+`TxTimerSeconds` is the CPS's **Tx Timer Duration**, Networks > Basic Settings > Basic Network Settings
+tab: how long the radio may transmit before the timer drops the carrier. It reads and writes in
+**seconds**, `0` means **no time-out at all**, and `MaxTxTimerSeconds` (250) is the CPS's maximum. A
+factory-default codeplug carries 60. The console names it `txtimer`.
+
+Item 0x15 is the network table - one entry per network, packed LSB-first, the first starting at bit 0
+of record 0x15/0. The timer is two fields of that entry, which the CPS keeps in step:
+
+| field | where | what it holds |
+|---|---|---|
+| duration | bits 52..59 | the time-out in seconds, `0`..`250` |
+| flag | bit 7 | set whenever a duration is programmed, cleared when it is zero |
+
+Writing the duration maintains the flag, so the result is byte-identical to the CPS's own save of the
+same edit. Three CPS saves of one TM8100 codeplug (DBVer 0095) - the duration at its 60 s default, at
+30 s, and at 0 - differ in this record and in **no other byte of the file**, which is what pins both
+fields; `set txtimer` on the first reproduces each of the other two exactly, and restores the first.
+
+Only the **first network** is mapped. A default codeplug carries exactly one, and no capture pins where
+the next network's entry starts, so a codeplug with several networks has only its first one read and
+written here.
 
 ## Status and safety
 

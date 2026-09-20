@@ -363,6 +363,88 @@ public class PdnProfileTests
         FieldConsole.Get(f, "key.f4").Should().Be("Unassigned");
     }
 
+    /// <summary>
+    /// The timer's counterpart to the wiring and key tests: winding the Tx Timer Duration down to
+    /// 30 seconds, and off, on the factory-default network table must produce the CPS's own bytes for
+    /// each. The three codeplugs those constants come from differ in this record and nothing else.
+    /// </summary>
+    [Fact]
+    public void The_tx_timer_reproduces_the_cps_save_byte_for_byte()
+    {
+        CodeplugFields f = Fixtures.Open(Fixtures.DefaultDigitalIoTable);
+        f.TxTimerSeconds.Should().Be(60);   // the factory default the fixture carries
+
+        f.TxTimerSeconds = 30;
+
+        Convert.ToHexString(f.Image.Require(0x15, 0).Data).Should().Be(Fixtures.TxTimer30sNetworkTable);
+
+        // zero is "no time-out", and the CPS clears its flag bit with the duration
+        f.TxTimerSeconds = 0;
+        Convert.ToHexString(f.Image.Require(0x15, 0).Data).Should().Be(Fixtures.TxTimerOffNetworkTable);
+        f.TxTimerSeconds.Should().Be(0);
+
+        // and back to the default, byte for byte - the flag comes back with it
+        f.TxTimerSeconds = 60;
+        Convert.ToHexString(f.Image.Require(0x15, 0).Data).Should().Be(Fixtures.DefaultNetworkTable);
+    }
+
+    [Fact]
+    public void The_tx_timer_holds_the_cps_range()
+    {
+        CodeplugFields f = Fixtures.Open(Fixtures.DefaultDigitalIoTable);
+
+        CodeplugFields.MaxTxTimerSeconds.Should().Be(250);
+        f.TxTimerSeconds = CodeplugFields.MaxTxTimerSeconds;
+        f.TxTimerSeconds.Should().Be(250);
+
+        ((Action)(() => f.TxTimerSeconds = 251)).Should().Throw<ArgumentOutOfRangeException>();
+        ((Action)(() => f.TxTimerSeconds = -1)).Should().Throw<ArgumentOutOfRangeException>();
+
+        // a rejected write leaves the record exactly as it was
+        f.TxTimerSeconds.Should().Be(250);
+    }
+
+    [Fact]
+    public void Every_profile_winds_the_tx_timer_out_to_the_maximum()
+    {
+        Action<CodeplugFields>[] profiles =
+        [
+            f => f.ApplyAudioAndPtt(),
+            f => f.ApplyPdnBasic(),
+            f => f.ApplyPdnExtra(),
+            f => f.ApplyPdnInternal(),
+        ];
+
+        foreach (Action<CodeplugFields> profile in profiles)
+        {
+            CodeplugFields f = Fixtures.Open(Fixtures.DefaultDigitalIoTable);
+            f.TxTimerSeconds.Should().Be(60);
+
+            profile(f);
+
+            f.TxTimerSeconds.Should().Be(CodeplugFields.MaxTxTimerSeconds);
+
+            // the rest of the network entry is the default one, untouched
+            byte[] network = f.Image.Require(0x15, 0).Data;
+            byte[] @default = Convert.FromHexString(Fixtures.DefaultNetworkTable);
+            network[1..6].Should().Equal(@default[1..6]);
+            network[8..].Should().Equal(@default[8..]);
+        }
+    }
+
+    [Fact]
+    public void The_console_exposes_the_tx_timer_in_seconds()
+    {
+        CodeplugFields f = Fixtures.Open(Fixtures.DefaultDigitalIoTable);
+
+        FieldConsole.Get(f, "txtimer").Should().Be("60");
+        FieldConsole.Set(f, "txtimer", "250");
+        f.TxTimerSeconds.Should().Be(250);
+        FieldConsole.Get(f, "txtimer").Should().Be("250");
+        FieldConsole.Set(f, "txtimer", "0");
+        FieldConsole.Get(f, "txtimer").Should().Be("0");
+    }
+
     private static void AudioAndPttAreWiredForTheAuxConnector(CodeplugFields f)
     {
         Convert.ToHexString(f.Image.Require(0x3B, 0).Data).Should().Be(PacketAudioBlock);

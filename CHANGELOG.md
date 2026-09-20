@@ -4,6 +4,11 @@ What changed in each release. The section for a version is lifted into that vers
 
 Newest first. Add a section before tagging.
 
+## 0.15.0 - 2026-09-20
+
+- **The Tx timer is readable and settable**: `txtimer`, the CPS's **Tx Timer Duration** on Networks > Basic Settings > Basic Network Settings - how long the radio may transmit before the timer drops the carrier. It reads and writes in seconds; **`0` means no time-out at all**, and `250` is the CPS's maximum. `get radio.m8p txtimer` reads it, `set radio.m8p txtimer 250` sets it, and `patch <port> txtimer 250` does it live. It is two fields of the network table (0x15) that the CPS keeps in step - an 8-bit duration at bit 52 of the first network's entry, and a flag at bit 7 that it clears when the duration is zero - so writing one maintains the other. Three CPS saves of one codeplug (the duration at its 60 s default, at 30 s, and at 0) differ in that record and in **no other byte of the file**, and setting the field on the first reproduces each of the other two byte for byte, and restores the first. Only the first network is mapped: a default codeplug carries exactly one, and no capture pins where the next entry begins.
+- **Every profile now winds the Tx timer out to 250 seconds**, the maximum. A default codeplug drops the carrier after 60, which is short enough to cut a long packet transmission in half - so `audio-and-ptt` sets it, and `pdn-basic`, `pdn-extra` and `pdn-internal` all carry it the same way they carry the `F1` key. Like that key it is an operator setting rather than part of the modem wiring, so note it if you apply `audio-and-ptt` for the wiring alone: the profiles now touch the network table (0x15) as well. Still no RF or channel config touched.
+
 ## 0.14.1 - 2026-09-20
 
 A packaging fix. The tool itself is unchanged.
