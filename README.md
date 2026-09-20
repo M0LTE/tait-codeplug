@@ -33,6 +33,13 @@ sudo apt install tait-codeplug
 `amd64`, `arm64` and `armhf`. The same [packet-net apt repository](https://github.com/packet-net/apt)
 carries the rest of the Packet.NET packages, so the three lines above are worth having anyway.
 
+On `armhf` this needs Debian 12 (bookworm) or newer, which for a Raspberry Pi means a 32-bit image
+of Raspberry Pi OS bookworm or later. .NET 10's 32-bit ARM runtime requires glibc 2.34, and Debian 11
+(bullseye) has 2.31, so the binary cannot start there at all. The package says so in its
+dependencies, so apt on an older machine declines with unmet dependencies rather than installing
+something that then dies in the dynamic loader. A 64-bit image is the better answer where the Pi
+supports one. `amd64` and `arm64` are not affected and still install on bullseye.
+
 An apt-installed copy is upgraded with apt, not with `--upgrade`: run
 `sudo apt update && sudo apt install --only-upgrade tait-codeplug`. `--upgrade` will notice and tell
 you so rather than overwriting a file dpkg owns.
