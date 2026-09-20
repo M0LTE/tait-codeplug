@@ -65,16 +65,35 @@ internal static class Fixtures
     /// codeplug carries no 0x18 record at all and an item count of zero.</summary>
     public const string SquelchOverrideKeyList = "100000";
 
+    // The network table (0x15) as three CPS saves of one TM8100 codeplug (DBVer 0095) hold it - the
+    // Tx Timer Duration at its 60 s default, wound down to 30 s, and off. Those three files differ in
+    // this record and in no other byte, which is what makes them a byte-exact target for the timer.
+
+    /// <summary>Network table (0x15): one network, Tx timer at the 60 s factory default.</summary>
+    public const string DefaultNetworkTable =
+        "800017000008C403E0018218A478A00F0C0080001888130008";
+
+    /// <summary>The same table with the Tx timer wound down to 30 seconds.</summary>
+    public const string TxTimer30sNetworkTable =
+        "800017000008E401E0018218A478A00F0C0080001888130008";
+
+    /// <summary>The same table with the Tx timer at zero - no time-out. The CPS clears its flag bit
+    /// (byte 0) as well as the duration.</summary>
+    public const string TxTimerOffNetworkTable =
+        "0000170000080400E0018218A478A00F0C0080001888130008";
+
     // Item index entries (7 bytes each) for the items the profiles touch: the function table
-    // (0x03, 14 bits x 65), the key table (0x0F, 20 bits x 4), the programmed-key list (0x18, 22 bits
-    // x 0), the audio block (0x3B, 95 bits x 4) and the digital line table (0x37, 132 bits x 15), as a
-    // real readout has them.
+    // (0x03, 14 bits x 65), the key table (0x0F, 20 bits x 4), the network table (0x15, one network),
+    // the programmed-key list (0x18, 22 bits x 0), the audio block (0x3B, 95 bits x 4) and the digital
+    // line table (0x37, 132 bits x 15), as a real readout has them.
     private const string ItemIndex =
-        "030E0041000200" + "0F140004000100" + "18160000000300" + "3B5F0004000900" + "3784000F000600";
+        "030E0041000200" + "0F140004000100" + "15140101001200" +
+        "18160000000300" + "3B5F0004000900" + "3784000F000600";
 
     /// <summary>A codeplug carrying every block the PDN profiles write: the data/signalling record,
-    /// the item index, the PTT table, the audio block, the digital I/O line table, the function table
-    /// and the front-panel key table. Every block but the data record is the real factory-default one.</summary>
+    /// the item index, the PTT table, the audio block, the digital I/O line table, the function table,
+    /// the front-panel key table and the network table. Every block but the data record is the real
+    /// factory-default one.</summary>
     public static CodeplugFields Open(string digitalIoTableHex)
     {
         var image = new CodeplugImage(
@@ -83,6 +102,7 @@ internal static class Fixtures
                 new CodeplugRecord(0x01, 0, Convert.FromHexString(ItemIndex)),
                 new CodeplugRecord(0x09, 0, new byte[37]),
                 new CodeplugRecord(0x0F, 0, Convert.FromHexString(DefaultFunctionKeyTable)),
+                new CodeplugRecord(0x15, 0, Convert.FromHexString(DefaultNetworkTable)),
                 new CodeplugRecord(0x19, 0, Convert.FromHexString(DefaultPttTable)),
                 new CodeplugRecord(0x3B, 0, Convert.FromHexString(DefaultAudioBlock)),
             ]);

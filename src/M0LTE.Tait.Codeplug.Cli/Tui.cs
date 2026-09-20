@@ -293,7 +293,7 @@ internal static class Tui
             Y = 5,
             Width = Dim.Fill(),
             Height = Dim.Fill(),
-            Text = "Applied when you\nwrite. No preset\ntouches RF or channel\nconfig. All set F1\nto squelch override.\n\n"
+            Text = "Applied when you\nwrite. No preset\ntouches RF or channel\nconfig. All set F1 to\nsquelch override and\nTx timer 250s.\n\n"
                 + "audio-and-ptt: the\naux-connector modem\nwiring - audio taps\nand PTT line.\n\n"
                 + "basic: that, plus\nCCDI control (RSSI,\npower, status, PTT,\nDCD) on the Mic\ndata port.\n\n"
                 + "extra: adds the\nTNC-less FFSK modem\nand SDM signalling.\n\n"

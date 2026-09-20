@@ -418,9 +418,11 @@ public sealed class CodeplugFields
     /// puts the modem's audio on air.
     /// <para>
     /// It also programs the front-panel <b>F1</b> key to Squelch Override, so the operator can open
-    /// the speaker and hear the channel whatever the squelch and subaudible signalling are doing.
-    /// That is an operator convenience rather than part of the modem wiring, but it is wanted on
-    /// every radio these profiles provision, and this is the one they all pass through.
+    /// the speaker and hear the channel whatever the squelch and subaudible signalling are doing, and
+    /// winds the <b>Tx timer</b> out to <see cref="MaxTxTimerSeconds"/> seconds, the CPS's maximum -
+    /// a default codeplug drops the carrier after 60, which is short enough to cut a packet
+    /// transmission in half. Neither is part of the modem wiring, but both are wanted on every radio
+    /// these profiles provision, and this is the one they all pass through.
     /// </para>
     /// <para>
     /// <see cref="ApplyPdnBasic"/> applies it as part of a full packet upgrade; it is exposed on its
@@ -429,7 +431,8 @@ public sealed class CodeplugFields
     /// record nor the RF config: it changes the audio block (0x3B), one line of the digital I/O table
     /// (0x37) and one entry of the PTT table (0x19) - those three reproduce, byte for byte, a CPS save
     /// of that configuration on an otherwise default TM8100 codeplug (DBVer 0095) - plus the three key
-    /// items (0x0F, 0x03, 0x18), which likewise reproduce a CPS save of that key edit (DBVer 0094).
+    /// items (0x0F, 0x03, 0x18), which likewise reproduce a CPS save of that key edit (DBVer 0094),
+    /// and the first network's entry (0x15), which reproduces a CPS save of the timer edit.
     /// </para>
     /// </summary>
     public void ApplyAudioAndPtt()
@@ -438,6 +441,7 @@ public sealed class CodeplugFields
         SetDigitalIoRole(DigitalIoLine.AuxGpi1, DigitalIoRole.ExternalPtt1Input);
         SetPttTransmission(PttSource.ExternalPtt1, PttTransmission.DataFromAudioTapIn);
         SetFunctionKeyRole(FunctionKey.F1, FunctionKeyRole.SquelchOverride);
+        TxTimerSeconds = MaxTxTimerSeconds;
     }
 
     /// <summary>
@@ -1730,6 +1734,59 @@ public sealed class CodeplugFields
         }
 
         Image.Require(0x4D, (byte)(network - 1)).Data[index - 1] = value;
+    }
+
+    // ---- Networks > Basic Settings, Basic Network Settings tab (record 0x15/0) ----------
+    //
+    // Item 0x15 is the network table: one entry per network, packed LSB-first, the first entry
+    // starting at bit 0 of record 0x15/0. Only that first network is mapped - a factory-default
+    // codeplug carries exactly one, and no capture pins where the next one starts.
+
+    private const byte NetworkSection = 0x15;
+
+    // The transmit time-out timer is two fields the CPS keeps in step: the duration in seconds, and a
+    // flag set whenever a duration is programmed. Three CPS saves of the same codeplug - the duration
+    // at its 60 s default, at 30 s, and at 0 - differ in these bits and in no other byte of the file.
+    private const int NetworkTxTimerEnabled = 7;    // 1 bit
+    private const int NetworkTxTimerDuration = 52;  // 8 bits, seconds
+
+    /// <summary>The longest transmission <see cref="TxTimerSeconds"/> can be set to, in seconds: the
+    /// CPS's own maximum for the field.</summary>
+    public const int MaxTxTimerSeconds = 250;
+
+    /// <summary>True when the codeplug carries the network table (record 0x15/0).</summary>
+    public bool HasNetworks => HasRecord(NetworkSection, 0);
+
+    private byte[] Network => Image.Require(NetworkSection, 0).Data;
+
+    /// <summary>
+    /// How long the radio may transmit before the Tx timer drops the carrier, in seconds (the CPS
+    /// "Tx Timer Duration", Networks &gt; Basic Settings &gt; Basic Network Settings), for the first
+    /// network. <b>0 means no time-out at all</b>; <see cref="MaxTxTimerSeconds"/> is the CPS's
+    /// maximum, and a factory-default codeplug carries 60.
+    /// </summary>
+    /// <remarks>
+    /// The duration is a byte at bit 52 of the network entry. The CPS also clears a flag bit when the
+    /// duration is zero and sets it whenever one is programmed; writing here keeps the two in step, so
+    /// the result is byte-identical to the CPS's own save of the same edit.
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The value is negative or above
+    /// <see cref="MaxTxTimerSeconds"/>.</exception>
+    public int TxTimerSeconds
+    {
+        get => (int)GetBits(Network, NetworkTxTimerDuration, 8);
+        set
+        {
+            if (value is < 0 or > MaxTxTimerSeconds)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(value), value, $"0..{MaxTxTimerSeconds} s (0 is no time-out)");
+            }
+
+            byte[] p = Network;
+            SetBits(p, NetworkTxTimerDuration, 8, value);
+            SetBits(p, NetworkTxTimerEnabled, 1, value == 0 ? 0 : 1);
+        }
     }
 
     // ---- Audio tap block (record 0x3B/0) ------------------------------------------------

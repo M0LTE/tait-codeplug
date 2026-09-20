@@ -30,6 +30,12 @@ public static class FieldConsole
         rows.Add(("ctcsstable", string.Join(",", f.CtcssTable.Select(hz => hz.ToString("0.0", CultureInfo.InvariantCulture)))));
         rows.Add(("dcstable", string.Join(",", f.DcsTable)));
 
+        // Networks > Basic Settings, Basic Network Settings tab (record 0x15; only if present)
+        if (f.HasNetworks)
+        {
+            rows.Add(("txtimer", f.TxTimerSeconds.ToString(CultureInfo.InvariantCulture)));
+        }
+
         rows.Add(("sdm", f.SdmEnabled ? "true" : "false"));
         rows.Add(("thsd", f.ThsdModemEnabled ? "true" : "false"));
         rows.Add(("transparent", f.TransparentModeEnabled ? "true" : "false"));
@@ -201,6 +207,8 @@ public static class FieldConsole
 
         switch (name.ToLowerInvariant())
         {
+            // Networks > Basic Settings tab (seconds; 0 is no time-out, 250 the CPS's maximum)
+            case "txtimer": f.TxTimerSeconds = int.Parse(value, CultureInfo.InvariantCulture); return;
             case "sdm": f.SdmEnabled = Bool(value); return;
             case "thsd": f.ThsdModemEnabled = Bool(value); return;
             case "transparent": f.TransparentModeEnabled = Bool(value); return;

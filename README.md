@@ -191,6 +191,12 @@ are settable individually: `set radio.m8p key.f1 SquelchOverride` (or `Unassigne
 grep key.` lists all four. Like the digital I/O lines, a key is written as a whole pattern validated
 against a CPS save, and a function this tool has not captured reads as `Other` and is left untouched.
 
+And it winds the **Tx timer out to 250 seconds**, the CPS's maximum. A default codeplug drops the
+carrier after 60, which is short enough to cut a long packet transmission in half; every profile
+carries the longer timer for the same reason it carries the key. It is settable on its own in seconds:
+`set radio.m8p txtimer 250`, and **`0` means no time-out at all**. `get radio.m8p txtimer` reads it
+back. It is the first network's `Tx Timer Duration` on the CPS's Networks > Basic Settings page.
+
 `pdn-basic` adds the CCDI command channel on top of that wiring - CCDI on, the radio in Command mode at
 power-up, progress messages on, the command baud at 28800, and the data port on Mic, the front-panel
 connector the host's serial lead plugs into - and `pdn-extra` adds the transparent FFSK modem and SDM
