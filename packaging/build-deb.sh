@@ -209,8 +209,10 @@ echo "floors for $ARCH: libc6 >= $GLIBC_MIN, libstdc++6 >= $STDCXX_MIN (GLIBCXX_
 # Depends: the native prerequisites a self-contained .NET app still needs from the system.
 # ICU is the awkward one - Debian stamps the soname into the package name, so there is no
 # stable name to depend on and the list has to be an alternation that dpkg satisfies with
-# whichever one the target distro ships (76 trixie, 74 ubuntu 24.04, 72 bookworm, 71/70
-# ubuntu 22.04, 67 bullseye). This is what Microsoft's own dotnet-runtime .debs do. The
+# whichever one the target distro ships (78 ubuntu 26.04, 76 trixie, 74 ubuntu 24.04, 72
+# bookworm, 71/70 ubuntu 22.04, 67 bullseye). The list runs ahead of what any distro ships
+# today, because one that stopped at 76 left apt on Ubuntu 26.04 with no installable choice
+# at all (packet-net/dapps#232); apt skips names that do not exist yet. This is what Microsoft's own dotnet-runtime .debs do. The
 # alternative would be InvariantGlobalization=true, which is a behaviour change, not a
 # packaging one. ca-certificates is for the HTTPS fetch --upgrade does.
 cat > "$STAGE/root/DEBIAN/control" <<EOF
@@ -219,7 +221,7 @@ Version: $VERSION
 Architecture: $ARCH
 Maintainer: Tom Fanning M0LTE <tom@m0lte.uk>
 Installed-Size: $INSTALLED_SIZE
-Depends: libc6 (>= $GLIBC_MIN), libgcc-s1, libstdc++6 (>= $STDCXX_MIN), zlib1g, ca-certificates, libicu76 | libicu74 | libicu72 | libicu71 | libicu70 | libicu67
+Depends: libc6 (>= $GLIBC_MIN), libgcc-s1, libstdc++6 (>= $STDCXX_MIN), zlib1g, ca-certificates, libicu80 | libicu79 | libicu78 | libicu77 | libicu76 | libicu74 | libicu72 | libicu71 | libicu70 | libicu69 | libicu68 | libicu67 | libicu66 | libicu63
 Section: hamradio
 Priority: optional
 Homepage: https://github.com/M0LTE/tait-codeplug
