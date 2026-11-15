@@ -76,4 +76,38 @@ public class LivePatchTests
 
         again.Changed.Should().BeEmpty();
     }
+
+    [Fact]
+    public void A_record_the_change_removes_is_reported_and_kept_in_the_backup()
+    {
+        CodeplugImage image = Fixtures.Open(Fixtures.DefaultDigitalIoTable).Image;
+        LivePatch.Apply(image, "profile", "pdn-internal");   // programs F1, adding the programmed-key record
+        var withKey = image.Records.Select(r => (r.Section, r.Index)).ToList();
+
+        LivePatchResult patch = LivePatch.Apply(image, "key.f1", "Unassigned");
+
+        var removed = withKey.Where(k => !image.Records.Any(r => (r.Section, r.Index) == k)).ToList();
+        removed.Should().NotBeEmpty("clearing the only programmed key empties the programmed-key list");
+        foreach ((byte section, byte index) in removed)
+        {
+            patch.Changed.Should().Contain($"0x{section:X2}/{index} (removed)");
+        }
+
+        patch.Original.Records.Select(r => (r.Section, r.Index)).Should().Equal(withKey);
+        // and the backup is a consistent codeplug: it loads, and its key can be read and set again
+        CodeplugFields restored = CodeplugFields.Open(CodeplugImage.LoadM8p(patch.Original.ToM8p()));
+        FieldConsole.Get(restored, "key.f1").Should().Be("SquelchOverride");
+        FieldConsole.Set(restored, "key.f1", "Unassigned");
+    }
+
+    [Fact]
+    public void A_settable_field_with_no_readable_form_is_not_called_a_profile()
+    {
+        CodeplugImage image = Fixtures.Open(Fixtures.DefaultDigitalIoTable).Image;
+
+        LivePatchResult patch = LivePatch.Apply(image, "audio", "packet-defaults");
+
+        patch.Before.Should().Be("(not readable)");
+        patch.After.Should().Be("packet-defaults");
+    }
 }
