@@ -349,29 +349,15 @@ static int CmdPatch(string port, string field, string value)
     Console.Error.WriteLine($"opening {port} at 19200 8N1; POWER-CYCLE THE RADIO NOW to latch programming mode...");
 
     CodeplugImage image = programmer.ReadImage();
-    var snapshot = image.Records.ToDictionary(r => (r.Section, r.Index), r => (byte[])r.Data.Clone());
-    CodeplugFields fields = CodeplugFields.Open(image);
-
-    string before = FieldConsole.Get(fields, field);
-    FieldConsole.Set(fields, field, value);
-    string after = FieldConsole.Get(fields, field);
-
-    var changed = image.Records
-        .Where(r => !r.Data.AsSpan().SequenceEqual(snapshot[(r.Section, r.Index)]))
-        .Select(r => $"0x{r.Section:X2}/{r.Index}")
-        .ToList();
-    if (changed.Count == 0)
+    LivePatchResult patch = LivePatch.Apply(image, field, value);
+    if (patch.Changed.Count == 0)
     {
         Console.WriteLine($"{field} is already {value}; nothing to write.");
         return 0;
     }
 
-    // Golden rule 1: snapshot the pre-change codeplug before writing. `image` still holds the
-    // radio's original bytes for the records we did not touch, and `snapshot` holds the originals
-    // for the ones we did, so restore the changed records and write the backup file.
-    var original = new CodeplugImage(
-        image.Header,
-        image.Records.Select(r => new CodeplugRecord(r.Section, r.Index, snapshot[(r.Section, r.Index)])).ToList());
+    // Golden rule 1: snapshot the pre-change codeplug before writing.
+    CodeplugImage original = patch.Original;
     string backup = $"{field}.pre-patch-backup-{DateTime.UtcNow:yyyyMMddHHmmss}.m8p";
     File.WriteAllText(backup, original.ToM8p());
     Console.WriteLine($"backed up the pre-change codeplug to {backup}");
@@ -379,7 +365,7 @@ static int CmdPatch(string port, string field, string value)
     // The radio does not commit a partial write block (bench 2026-08-19: a single-record write is
     // acked but discarded, likely because the i<arg> init encodes the full-codeplug scope, #744).
     // So a live field change writes the WHOLE codeplug, which is the validated write path.
-    Console.WriteLine($"{field}: {before} -> {after} (changed record(s): {string.Join(", ", changed)})");
+    Console.WriteLine($"{field}: {patch.Before} -> {patch.After} (changed record(s): {string.Join(", ", patch.Changed)})");
     int written = programmer.WriteImage(image);
     Console.WriteLine($"wrote {written} records. Re-read (a fresh power cycle) to verify; " +
         "read-back in the same session is unreliable after a write.");
