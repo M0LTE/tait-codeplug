@@ -132,6 +132,7 @@ Beyond that:
 
 - Make the terminal window smaller while you are editing: 80x24 costs a sixth of what 200x50 does.
 - Skip the editor for a single value: `tait-codeplug patch /dev/ttyUSB0 ch0.rxfreq 144.812500` does a read-modify-write with no typing in a UI at all.
+- Several changes in one write: `tait-codeplug read /dev/ttyUSB0 radio.m8p`, then `set radio.m8p ...` as many times as you need (`set radio.m8p profile pdn-internal`, `set radio.m8p txtap T12`), then `tait-codeplug write /dev/ttyUSB0 radio.m8p`. It refuses a file read from a different radio.
 - Over SSH, run the tool on the machine the radio is plugged into rather than across the link.
 
 Colours are true-colour: a dark slate palette, green for read, amber for write (it is the one that changes your radio), red for errors. Terminal.Gui maps them down on a 16- or 256-colour terminal, so it stays legible on a plain console.
@@ -151,6 +152,7 @@ tait-codeplug set     <file.m8p> profile <name>    apply an upgrade profile to a
 # hardware (radio latched into programming mode on <port>: power-cycle it as you trigger)
 tait-codeplug version <port>                       interrogate: model / firmware / serial
 tait-codeplug read    <port> [out.m8p]             read the codeplug (to a file, or stdout if omitted)
+tait-codeplug write   <port> <file.m8p>            write a saved codeplug to the radio it was read from (backs up first)
 tait-codeplug patch   <port> <field> <value>       live-set one field (backs up first)
 tait-codeplug patch   <port> profile <name>        live-apply an upgrade profile
 tait-codeplug channel add    <file.m8p>            append a channel (a copy of the last one)
@@ -211,7 +213,8 @@ output); `get radio.m8p | grep gpio` lists every line.
 
 ## Safety
 
-1. `patch` snapshots the current codeplug to a backup file before writing. Keep it.
+1. `patch` and `write` snapshot the current codeplug to a backup file before writing. Keep it. `write`
+   also refuses a file whose serial number is not the radio's.
 2. Codeplug region only. This never writes firmware.
 3. Version-pinned: the write path refuses a radio whose database version is not in its validated set
    (currently 0094 / 0095), because the field offsets are version-specific.
