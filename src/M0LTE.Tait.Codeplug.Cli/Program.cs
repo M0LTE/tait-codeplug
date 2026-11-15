@@ -286,22 +286,24 @@ static CodeplugImage LoadImage(string source)
     return programmer.ReadImage();
 }
 
-// read <port>            -> print the .m8p to stdout (pipe it, e.g. `... read /dev/ttyUSB0 > radio.m8p`)
-// read <port> <out.m8p>  -> write the .m8p to a file
 // Writes a saved codeplug to a radio in one session, so a codeplug that needs several changes (a
 // profile plus a field the profile also sets, for example) goes on in one write instead of a patch
 // per change. The radio is read first, which is the path validated against real radios, and that
-// read is both the serial-number check and the backup.
+// read is the backup and the check that the file came from this radio on this database version.
 static int CmdWrite(string port, string path)
 {
     CodeplugImage image = CodeplugImage.LoadM8p(File.ReadAllText(path));
+    if (WriteGuard.FileRefusal(image) is { } fileRefusal)
+    {
+        Console.Error.WriteLine($"refusing to write {path}: {fileRefusal}");
+        return 2;
+    }
+
     using var programmer = new TaitProgrammer(new SerialPortLine(port), HardwareOptions());
     Console.Error.WriteLine($"opening {port} at 19200 8N1; POWER-CYCLE THE RADIO NOW to latch programming mode...");
 
     CodeplugImage current = programmer.ReadImage();
-    TaitIdentity radio = TaitIdentity.FromSectionZero(current.Records.Where(r => r.Section == 0).ToList());
-    TaitIdentity file = TaitIdentity.FromSectionZero(image.Records.Where(r => r.Section == 0).ToList());
-    if (WriteGuard.Refusal(radio, file) is { } refusal)
+    if (WriteGuard.Refusal(current, image) is { } refusal)
     {
         Console.Error.WriteLine($"refusing to write {path}: {refusal}");
         return 2;
@@ -309,7 +311,8 @@ static int CmdWrite(string port, string path)
 
     string backup = $"write.pre-write-backup-{DateTime.UtcNow:yyyyMMddHHmmss}.m8p";
     File.WriteAllText(backup, current.ToM8p());
-    Console.WriteLine($"radio {radio.Serial} matches {path}; backed up what it holds now to {backup}");
+    string serial = TaitIdentity.FromSectionZero(current.Records.Where(r => r.Section == 0).ToList()).Serial ?? "?";
+    Console.WriteLine($"radio {serial} matches {path}; backed up what it holds now to {backup}");
 
     int written = programmer.WriteImage(image);
     Console.WriteLine($"wrote {written} records from {path}. Re-read (a fresh power cycle) to verify; " +
@@ -317,6 +320,8 @@ static int CmdWrite(string port, string path)
     return 0;
 }
 
+// read <port>            -> print the .m8p to stdout (pipe it, e.g. `... read /dev/ttyUSB0 > radio.m8p`)
+// read <port> <out.m8p>  -> write the .m8p to a file
 static int CmdRead(string port, string? outPath)
 {
     using var programmer = new TaitProgrammer(new SerialPortLine(port), HardwareOptions());
