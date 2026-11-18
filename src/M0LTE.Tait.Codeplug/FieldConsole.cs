@@ -25,6 +25,7 @@ public static class FieldConsole
             rows.Add(($"ch{c}.network", Int(f.GetNetwork(c))));
             rows.Add(($"ch{c}.txtone", f.GetTxSubaudible(c)));
             rows.Add(($"ch{c}.rxtone", f.GetRxSubaudible(c)));
+            rows.Add(($"ch{c}.birdiekiller", f.GetBirdieKiller(c) ? "true" : "false"));
         }
 
         rows.Add(("ctcsstable", string.Join(",", f.CtcssTable.Select(hz => hz.ToString("0.0", CultureInfo.InvariantCulture)))));
@@ -201,6 +202,7 @@ public static class FieldConsole
                 case "rxtoneindex": f.SetRxSubaudibleIndex(channel, int.Parse(value, CultureInfo.InvariantCulture)); return;
                 case "rxtone": SetTone(f, channel, rx: true, value); return;
                 case "txtone": SetTone(f, channel, rx: false, value); return;
+                case "birdiekiller": f.SetBirdieKiller(channel, Bool(value)); return;
                 default: throw new FormatException($"unknown channel field '{field}'");
             }
         }

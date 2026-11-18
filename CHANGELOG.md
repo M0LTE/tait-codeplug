@@ -4,6 +4,10 @@ What changed in each release. The section for a version is lifted into that vers
 
 Newest first. Add a section before tagging.
 
+## 0.16.0 - unreleased
+
+- **The per-channel Activate Birdie Killer option is readable and settable**: `ch<N>.birdiekiller`, the tick box on the CPS's Channels form, Detailed tab, which Tait describe as reducing a hum or whistle on a channel caused by internal interference. `get radio.m8p ch0.birdiekiller` reads it, `set radio.m8p ch0.birdiekiller true` sets it, `patch <port> ch0.birdiekiller true` does it live, and `channel add` copies it with the rest of the channel. It is the first two bits of the channel's block in the channel table (0x05), both set when ticked and both clear when not. Two CPS saves of one codeplug, differing only in that box on the first channel, differ in those two bits and in no other byte of the file apart from the save date, and setting the field on either reproduces the other byte for byte. Nothing shows whether the two bits are one field or two flags the CPS always sets together, so the field reads true only when both are set, and unticking a channel that already reads false leaves its bits alone.
+
 ## 0.15.1 - 2026-10-13
 
 A packaging fix. The tool itself is unchanged.
