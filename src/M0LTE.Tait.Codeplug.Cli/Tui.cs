@@ -908,7 +908,8 @@ internal static class Tui
     private static string FormatChannel(CodeplugFields f, int i)
     {
         string rx = Mhz(f.GetRxFrequencyHz(i));
-        string tx = f.GetSeparateTxFrequency(i) ? Mhz(f.GetTxFrequencyHz(i)) : "(= RX)";
+        long txHz = f.GetTxFrequencyHz(i);
+        string tx = txHz == f.GetRxFrequencyHz(i) ? "(= RX)" : Mhz(txHz);
         return $"{i,-4}{rx,-14}{tx,-14}{f.GetBandwidth(i),-11}{f.GetPowerLevel(i),-8}";
     }
 
@@ -943,16 +944,11 @@ internal static class Tui
         var rxLabel = new Label { Text = "RX (MHz):", X = 1, Y = 1 };
         var rxField = new TextField { X = 14, Y = 1, Width = 16, Text = Mhz(f.GetRxFrequencyHz(index)) };
 
-        var splitBox = new CheckBox
-        {
-            Text = "Separate TX frequency",
-            X = 1,
-            Y = 3,
-            Value = f.GetSeparateTxFrequency(index) ? CheckState.Checked : CheckState.UnChecked,
-        };
-
-        var txLabel = new Label { Text = "TX (MHz):", X = 1, Y = 4 };
-        var txField = new TextField { X = 14, Y = 4, Width = 16, Text = Mhz(f.GetTxFrequencyHz(index)) };
+        // A split channel is just one whose TX frequency differs from its RX frequency: the codeplug
+        // has no separate flag for it. An empty TX box means the same as RX.
+        var txLabel = new Label { Text = "TX (MHz):", X = 1, Y = 3 };
+        var txField = new TextField { X = 14, Y = 3, Width = 16, Text = Mhz(f.GetTxFrequencyHz(index)) };
+        var txHint = new Label { Text = "(empty = same as RX)", X = 32, Y = 3 };
 
         var bwLabel = new Label { Text = "Bandwidth:", X = 1, Y = 6 };
         var bwSelector = new OptionSelector
@@ -983,10 +979,10 @@ internal static class Tui
             e.Handled = true;
             try
             {
-                bool split = splitBox.Value == CheckState.Checked;
-                f.SetRxFrequencyHz(index, ParseMhz(rxField.Text, "RX"));
-                f.SetSeparateTxFrequency(index, split);
-                f.SetTxFrequencyHz(index, split ? ParseMhz(txField.Text, "TX") : ParseMhz(rxField.Text, "RX"));
+                long rxHz = ParseMhz(rxField.Text, "RX");
+                long txHz = string.IsNullOrWhiteSpace(txField.Text) ? rxHz : ParseMhz(txField.Text, "TX");
+                f.SetRxFrequencyHz(index, rxHz);
+                f.SetTxFrequencyHz(index, txHz);
                 f.SetBandwidth(index, (Bandwidth)(bwSelector.Value ?? 0));
                 f.SetPowerLevel(index, (PowerLevel)(powerSelector.Value ?? 0));
             }
@@ -1003,7 +999,7 @@ internal static class Tui
 
         dialog.AddButton(cancel);
         dialog.AddButton(ok);
-        dialog.Add(rxLabel, rxField, splitBox, txLabel, txField, bwLabel, bwSelector, powerLabel, powerSelector);
+        dialog.Add(rxLabel, rxField, txLabel, txField, txHint, bwLabel, bwSelector, powerLabel, powerSelector);
         _app.Run(dialog);
         dialog.Dispose();
     }

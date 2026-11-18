@@ -96,23 +96,68 @@ public class BirdieKillerTests
     }
 
     [Fact]
-    public void A_channel_with_only_the_first_bit_set_reads_off_and_unticking_it_leaves_that_bit_alone()
+    public void A_channel_with_only_the_first_bit_set_reads_on_and_unticking_clears_both_bits()
     {
-        // Channels read off real radios carry bit 0 set and bit 1 clear with the box unticked.
+        // Channels read off real radios often hold bit 0 alone (value 1), and measured on a radio that
+        // bit is the one with the option's effect. Same layout in both mapped database versions.
         foreach (string dbVer in new[] { "0094", "0095" })
         {
-            var image = new CodeplugImage(
-                new[] { new KeyValuePair<string, string>("DBVer", dbVer) },
-                new[] { new CodeplugRecord(0x05, 0, [0x01, .. new byte[22]]) });
-            CodeplugFields f = CodeplugFields.Open(image);
+            foreach (byte start in new byte[] { 0x01, 0x02 })
+            {
+                var image = new CodeplugImage(
+                    new[] { new KeyValuePair<string, string>("DBVer", dbVer) },
+                    new[] { new CodeplugRecord(0x05, 0, [(byte)(start | 0xEC), 0xEE, .. new byte[21]]) });
+                CodeplugFields f = CodeplugFields.Open(image);
 
-            f.GetBirdieKiller(0).Should().BeFalse();
-            f.SetBirdieKiller(0, false);
-            image.Records[0].Data[0].Should().Be(0x01);
+                f.GetBirdieKiller(0).Should().Be(start == 0x01, "bit 0 is the one that reads");
+                f.SetBirdieKiller(0, false);
+                image.Records[0].Data[0].Should().Be(0xEC, "off clears both bits and nothing else");
+                f.GetBirdieKiller(0).Should().BeFalse();
 
-            f.SetBirdieKiller(0, true);
-            image.Records[0].Data[0].Should().Be(0x03);
-            f.GetBirdieKiller(0).Should().BeTrue();
+                f.SetBirdieKiller(0, true);
+                image.Records[0].Data[0].Should().Be(0xEF, "on writes both bits, as the CPS does");
+                f.GetBirdieKiller(0).Should().BeTrue();
+            }
+        }
+    }
+
+    [Fact]
+    public void A_split_channel_is_only_a_tx_frequency_that_differs_and_carries_no_birdie_killer()
+    {
+        CodeplugImage image = Load(BirdieKillerFixtures.SimplexAndSplit);
+        image.ToM8p().Should().Be(BirdieKillerFixtures.SimplexAndSplit);
+        CodeplugFields f = CodeplugFields.Open(image);
+
+        f.ChannelCount.Should().Be(2);
+        Enumerable.Range(0, 2).Select(f.GetBirdieKiller).Should().Equal(false, false);
+        f.GetRxFrequencyHz(0).Should().Be(430_000_000);
+        f.GetTxFrequencyHz(0).Should().Be(430_000_000);
+        f.GetRxFrequencyHz(1).Should().Be(430_000_000);
+        f.GetTxFrequencyHz(1).Should().Be(431_000_000);
+        new ChannelBits(image.Records).GetBits(0, 2).Should().Be(0);
+        new ChannelBits(image.Records).GetBits(181, 2).Should().Be(0);
+
+        // Making the simplex channel split is the TX frequency alone.
+        string before = image.ToM8p();
+        FieldConsole.Set(f, "ch0.txfreq", "431000000");
+        FieldConsole.Set(f, "ch0.txfreq", "430000000");
+        image.ToM8p().Should().Be(before);
+    }
+
+    [Fact]
+    public void Splittx_is_gone_and_says_where_it_went()
+    {
+        CodeplugFields f = CodeplugFields.Open(Load(BirdieKillerFixtures.ThirdChannelOn));
+        FieldConsole.Describe(f).Select(r => r.Name).Should().NotContain(n => n.EndsWith(".splittx", StringComparison.Ordinal));
+
+        foreach (Action act in new Action[]
+        {
+            () => FieldConsole.Get(f, "ch1.splittx"),
+            () => FieldConsole.Set(f, "ch1.splittx", "true"),
+        })
+        {
+            act.Should().Throw<FormatException>()
+                .Which.Message.Should().Contain("ch1.birdiekiller").And.NotContain("\n");
         }
     }
 
