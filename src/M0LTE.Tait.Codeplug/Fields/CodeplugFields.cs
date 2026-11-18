@@ -24,7 +24,9 @@ public sealed class CodeplugFields
     private const int ChannelStrideBits = 181;
 
     // Channel field bit offsets, relative to the start of a channel.
-    private const int ChSeparateTx = 0;    // 1 bit
+    // There is no separate-TX flag: a split channel is one whose TX frequency differs from its RX
+    // frequency (pinned by a CPS save of a simplex and a split channel, both with bits 0-1 clear).
+    private const int ChBirdieKiller = 0;  // 2 bits, see GetBirdieKiller
     private const int ChTxFreq = 16;       // 32 bits, Hz
     private const int ChRxFreq = 48;       // 32 bits, Hz
     private const int ChBandwidth = 80;    // 2 bits
@@ -261,11 +263,23 @@ public sealed class CodeplugFields
     /// <summary>Set a channel's RX frequency in Hz.</summary>
     public void SetRxFrequencyHz(int channel, long hz) => SetCh(channel, ChRxFreq, 32, RequireFreq(hz));
 
-    /// <summary>Whether the channel transmits on a different frequency than it receives.</summary>
-    public bool GetSeparateTxFrequency(int channel) => Ch(channel, ChSeparateTx, 1) != 0;
+    /// <summary>The CPS "Activate Birdie Killer" tick box (Channels form, Detailed tab), which Tait
+    /// describe as reducing a hum or whistle on a channel caused by internal interference.</summary>
+    /// <remarks>
+    /// The first two bits of the channel's block. What is pinned:
+    /// - two CPS saves of one codeplug, differing only in this tick box on the first channel, differ in
+    ///   these two bits and nowhere else: 0 with the box unticked, 3 with it ticked;
+    /// - a third CPS save, with a simplex and a split channel, has 0 on both, so neither bit says
+    ///   anything about a separate TX frequency;
+    /// - measured on a radio, bit 0 alone has the option's effect on the receiver, and bit 1 on top of
+    ///   it shows none. Channels read off radios often hold bit 0 alone (value 1).
+    /// So it reads true whenever bit 0 is set, and writes 3 for on and 0 for off, as the CPS does.
+    /// </remarks>
+    public bool GetBirdieKiller(int channel) => (Ch(channel, ChBirdieKiller, 2) & 1) != 0;
 
-    /// <summary>Set whether the channel transmits on a different frequency than it receives.</summary>
-    public void SetSeparateTxFrequency(int channel, bool value) => SetCh(channel, ChSeparateTx, 1, value ? 1 : 0);
+    /// <summary>Tick or untick the CPS "Activate Birdie Killer" box for a channel: writes both bits,
+    /// 3 for on and 0 for off. See <see cref="GetBirdieKiller"/>.</summary>
+    public void SetBirdieKiller(int channel, bool value) => SetCh(channel, ChBirdieKiller, 2, value ? 3 : 0);
 
     /// <summary>Channel bandwidth.</summary>
     public Bandwidth GetBandwidth(int channel) => (Bandwidth)Ch(channel, ChBandwidth, 2);

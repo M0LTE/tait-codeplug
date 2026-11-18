@@ -17,7 +17,6 @@ public static class FieldConsole
         {
             rows.Add(($"ch{c}.rxfreq", Int(f.GetRxFrequencyHz(c))));
             rows.Add(($"ch{c}.txfreq", Int(f.GetTxFrequencyHz(c))));
-            rows.Add(($"ch{c}.splittx", f.GetSeparateTxFrequency(c) ? "true" : "false"));
             rows.Add(($"ch{c}.bandwidth", f.GetBandwidth(c).ToString()));
             rows.Add(($"ch{c}.power", f.GetPowerLevel(c).ToString()));
             rows.Add(($"ch{c}.squelch", f.GetSquelch(c).ToString()));
@@ -25,6 +24,7 @@ public static class FieldConsole
             rows.Add(($"ch{c}.network", Int(f.GetNetwork(c))));
             rows.Add(($"ch{c}.txtone", f.GetTxSubaudible(c)));
             rows.Add(($"ch{c}.rxtone", f.GetRxSubaudible(c)));
+            rows.Add(($"ch{c}.birdiekiller", f.GetBirdieKiller(c) ? "true" : "false"));
         }
 
         rows.Add(("ctcsstable", string.Join(",", f.CtcssTable.Select(hz => hz.ToString("0.0", CultureInfo.InvariantCulture)))));
@@ -162,6 +162,15 @@ public static class FieldConsole
     /// <summary>Read one field's value by name, or throw if the name is unknown.</summary>
     public static string Get(CodeplugFields f, string name)
     {
+        ArgumentNullException.ThrowIfNull(name);
+        int dot = name.IndexOf('.', StringComparison.Ordinal);
+        if (dot > 2 && name.StartsWith("ch", StringComparison.OrdinalIgnoreCase)
+            && name[(dot + 1)..].Equals("splittx", StringComparison.OrdinalIgnoreCase)
+            && int.TryParse(name.AsSpan(2, dot - 2), NumberStyles.None, CultureInfo.InvariantCulture, out int channel))
+        {
+            throw RetiredSplitTx(channel);
+        }
+
         foreach ((string n, string v) in Describe(f))
         {
             if (string.Equals(n, name, StringComparison.OrdinalIgnoreCase))
@@ -189,7 +198,7 @@ public static class FieldConsole
             {
                 case "rxfreq": f.SetRxFrequencyHz(channel, Hz(value)); return;
                 case "txfreq": f.SetTxFrequencyHz(channel, Hz(value)); return;
-                case "splittx": f.SetSeparateTxFrequency(channel, Bool(value)); return;
+                case "splittx": throw RetiredSplitTx(channel);
                 case "bandwidth": f.SetBandwidth(channel, Enum<Bandwidth>(value)); return;
                 case "power": f.SetPowerLevel(channel, Enum<PowerLevel>(value)); return;
                 case "squelch": f.SetSquelch(channel, Enum<Squelch>(value)); return;
@@ -201,6 +210,7 @@ public static class FieldConsole
                 case "rxtoneindex": f.SetRxSubaudibleIndex(channel, int.Parse(value, CultureInfo.InvariantCulture)); return;
                 case "rxtone": SetTone(f, channel, rx: true, value); return;
                 case "txtone": SetTone(f, channel, rx: false, value); return;
+                case "birdiekiller": f.SetBirdieKiller(channel, Bool(value)); return;
                 default: throw new FormatException($"unknown channel field '{field}'");
             }
         }
@@ -419,6 +429,11 @@ public static class FieldConsole
     private static string Int(long v) => v.ToString(CultureInfo.InvariantCulture);
 
     private static long Hz(string s) => long.Parse(s, CultureInfo.InvariantCulture);
+
+    // splittx was bit 0 of the channel block under the wrong name: that bit is the birdie killer, and a
+    // split channel is just one whose txfreq differs from its rxfreq.
+    private static FormatException RetiredSplitTx(int channel) =>
+        new($"ch{channel}.splittx is gone: it was the birdie killer bit under the wrong name, use ch{channel}.birdiekiller (a split channel is just txfreq != rxfreq)");
 
     private static bool Bool(string s) => s.ToLowerInvariant() switch
     {

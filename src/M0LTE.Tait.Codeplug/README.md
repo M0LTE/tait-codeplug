@@ -29,7 +29,7 @@ both in the packet.net repo where this code started life.
 - `CodeplugChecksum` / `CodeplugRecord` / `CodeplugImage` - the record model, checksum, and .m8p
   load/save + section map. Fully offline and unit-tested.
 - `Fields/` - the typed, version-pinned field map (`CodeplugFields`, `CodeplugEnums`,
-  `ChannelBits`): channels (frequency, bandwidth, power, split-TX, CTCSS/DCS), the whole CPS **Data**
+  `ChannelBits`): channels (frequency, bandwidth, power, CTCSS/DCS, birdie killer), the whole CPS **Data**
   form (its General, Serial Communications, RF Modems, SDM and TOTAL Transparent Mode tabs live in the
   one data/signalling record; the GPS and Customer Data tabs are separate records; plus the unit data
   identity), and audio taps. Each field is pinned by a test.

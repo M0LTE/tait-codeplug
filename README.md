@@ -161,6 +161,8 @@ tait-codeplug tui     [file.m8p]                  interactive mode, optionally o
 tait-codeplug --upgrade                           replace this binary with the latest release
 ```
 
+Channel fields are numbered from 0, so `ch0` is the CPS's channel 1. A split channel is simply one whose `txfreq` differs from its `rxfreq`; there is no separate flag. Each channel has `ch<N>.birdiekiller`, the CPS's **Activate Birdie Killer** tick box (Channels form, Detailed tab), which Tait describe as reducing a hum or whistle on a channel caused by internal interference: `set radio.m8p ch0.birdiekiller true` (or `false`; `on` and `off` work too), `get radio.m8p | grep birdiekiller` lists every channel, and `channel add` carries it over with the rest of the copied channel.
+
 `--upgrade` fetches the release build for your platform, checks it against the release's own `SHA256SUMS`, and renames it over the running binary. Nothing is replaced unless the checksum matches, and the swap is a rename, so a failure at any point leaves what you have working. It refuses early if it cannot write where the binary lives, rather than downloading 40 MB first to find out.
 
 The radio must be latched into programming mode: power-cycle it as the command connects. Progress and

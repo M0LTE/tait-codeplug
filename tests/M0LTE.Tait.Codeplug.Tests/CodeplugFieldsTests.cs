@@ -55,7 +55,7 @@ public class CodeplugFieldsTests
     {
         // one channel = 181 bits -> 23 bytes.
         var ch = new byte[23];
-        PutBits(ch, 0, 1, 1);                 // separate-tx bit 0
+        PutBits(ch, 0, 1, 1);                 // birdie killer, bit 0
         PutBits(ch, 16, 32, 146_900_000);     // tx freq at bit 16
         PutBits(ch, 48, 32, 145_000_000);     // rx freq at bit 48
         PutBits(ch, 80, 2, (long)Bandwidth.Wide);   // bandwidth at bit 80
@@ -63,7 +63,7 @@ public class CodeplugFieldsTests
 
         CodeplugFields f = CodeplugFields.Open(ImageWith(Channels(ch)));
         f.ChannelCount.Should().Be(1);
-        f.GetSeparateTxFrequency(0).Should().BeTrue();
+        f.GetBirdieKiller(0).Should().BeTrue();
         f.GetTxFrequencyHz(0).Should().Be(146_900_000);
         f.GetRxFrequencyHz(0).Should().Be(145_000_000);
         f.GetBandwidth(0).Should().Be(Bandwidth.Wide);
